@@ -1,0 +1,178 @@
+"use client";
+import { useState, useCallback, useRef } from "react";
+import { useRaceClock } from "@/hooks/useRaceClock";
+import { useEntries } from "@/hooks/useEntries";
+import { useRace } from "@/hooks/useRace";
+import { Entry, TimerMode, TimerConfig } from "@/lib/types";
+import RaceClock from "./RaceClock";
+import EntryList from "./EntryList";
+import QuickCapture from "./QuickCapture";
+
+interface TimerViewProps {
+  raceId: string;
+  timerId: string;
+  timerConfig: TimerConfig;
+}
+
+export default function TimerView({ raceId, timerId, timerConfig }: TimerViewProps) {
+  const { elapsed, isRunning, getServerNow, getElapsedAt, startTime } = useRaceClock(raceId);
+  const { myEntries, addEntry, updateEntry, deleteEntry, isOnline } = useEntries(raceId, timerId);
+  const [mode, setMode] = useState<TimerMode>("normal");
+  const [bibInput, setBibInput] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const vibrate = (ms: number) => {
+    if (typeof navigator !== "undefined" && navigator.vibrate) {
+      navigator.vibrate(ms);
+    }
+  };
+
+  const logEntry = useCallback(
+    (bibNumber: number | null) => {
+      if (!isRunning || !startTime) return;
+      const now = getServerNow();
+      const finishTime = now - startTime;
+
+      addEntry({
+        raceId,
+        timerId,
+        timerName: timerConfig.name,
+        bibNumber,
+        finishTime,
+        capturedAt: now,
+        status: "logged",
+      });
+
+      vibrate(50);
+    },
+    [isRunning, startTime, getServerNow, addEntry, raceId, timerId, timerConfig.name]
+  );
+
+  const handleNormalLog = () => {
+    const bib = parseInt(bibInput);
+    if (isNaN(bib) || bib <= 0) return;
+    logEntry(bib);
+    setBibInput("");
+    inputRef.current?.focus();
+  };
+
+  const handleQuickCapture = () => {
+    logEntry(null);
+  };
+
+  const handleAssignBib = (entryId: string, bib: number) => {
+    updateEntry(entryId, { bibNumber: bib });
+  };
+
+  const unassignedCount = myEntries.filter((e) => e.bibNumber === null).length;
+
+  if (mode === "quickCapture") {
+    return (
+      <div className="h-dvh flex flex-col">
+        {!isOnline && (
+          <div className="bg-yellow-500 text-yellow-900 text-center py-2 font-bold text-sm">
+            OFFLINE — entries will sync when connected
+          </div>
+        )}
+        <RaceClock elapsed={elapsed} isRunning={isRunning} color={timerConfig.color} />
+        <QuickCapture
+          onCapture={handleQuickCapture}
+          captureCount={myEntries.filter((e) => e.bibNumber === null).length + myEntries.filter(e => e.bibNumber !== null).length}
+          isRunning={isRunning}
+        />
+        <div className="p-3 bg-gray-100">
+          <button
+            onClick={() => setMode("normal")}
+            className="w-full bg-gray-700 text-white py-3 rounded-xl font-bold text-lg"
+          >
+            ← Back to Normal Mode
+            {unassignedCount > 0 && (
+              <span className="ml-2 bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded-full text-sm">
+                {unassignedCount} unassigned
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-dvh flex flex-col bg-gray-50">
+      {!isOnline && (
+        <div className="bg-yellow-500 text-yellow-900 text-center py-2 font-bold text-sm">
+          OFFLINE — entries will sync when connected
+        </div>
+      )}
+      <RaceClock elapsed={elapsed} isRunning={isRunning} color={timerConfig.color} />
+
+      {/* Quick Capture Toggle */}
+      <div className="px-3 pt-3">
+        <button
+          onClick={() => setMode("quickCapture")}
+          className="w-full bg-orange-500 text-white py-3 rounded-xl font-bold text-lg shadow-lg"
+        >
+          ⚡ Quick Capture Mode
+          {unassignedCount > 0 && (
+            <span className="ml-2 bg-yellow-300 text-yellow-900 px-2 py-0.5 rounded-full text-sm">
+              {unassignedCount} unassigned
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Normal Mode: Bib Entry */}
+      <div className="p-3">
+        <div className="flex gap-2">
+          <input
+            ref={inputRef}
+            type="number"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={bibInput}
+            onChange={(e) => setBibInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleNormalLog();
+            }}
+            placeholder="Bib #"
+            className="flex-1 h-16 text-center text-3xl font-bold border-3 border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none"
+            disabled={!isRunning}
+          />
+          <button
+            onClick={handleNormalLog}
+            disabled={!isRunning || !bibInput}
+            className="h-16 px-8 bg-green-600 text-white text-2xl font-bold rounded-xl disabled:bg-gray-300 disabled:text-gray-500 shadow-lg active:scale-95 transition-transform"
+          >
+            LOG
+          </button>
+        </div>
+        {!isRunning && (
+          <div className="text-center text-gray-500 mt-2 text-sm">
+            Waiting for race to start...
+          </div>
+        )}
+      </div>
+
+      {/* Entry List */}
+      <div className="flex-1 overflow-y-auto px-3 pb-3">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="font-bold text-gray-600 text-sm uppercase">
+            My Entries ({myEntries.length})
+          </h3>
+          {unassignedCount > 0 && (
+            <span className="bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded-full text-xs font-bold">
+              {unassignedCount} need bibs
+            </span>
+          )}
+        </div>
+        <EntryList
+          entries={myEntries}
+          bibRangeStart={timerConfig.bibRangeStart}
+          bibRangeEnd={timerConfig.bibRangeEnd}
+          onAssignBib={handleAssignBib}
+          onDelete={deleteEntry}
+        />
+      </div>
+    </div>
+  );
+}
