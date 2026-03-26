@@ -13,7 +13,6 @@ export default function Home() {
         <h1 className="text-4xl font-black text-center mb-2">5K Timer</h1>
         <p className="text-gray-500 text-center mb-8">Community Race Timing</p>
 
-        {/* Tabs */}
         <div className="flex bg-gray-200 rounded-xl p-1 mb-6">
           <button
             onClick={() => setTab("join")}
@@ -83,9 +82,9 @@ function JoinForm() {
           type="text"
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
-          placeholder="e.g. ABC123"
-          maxLength={6}
-          className="w-full h-14 px-4 text-xl font-mono text-center tracking-widest border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none uppercase"
+          placeholder="e.g. AB12"
+          maxLength={4}
+          className="w-full h-14 px-4 text-2xl font-mono text-center tracking-[0.5em] border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none uppercase"
         />
       </div>
       {error && <div className="text-red-600 text-sm font-bold">{error}</div>}
@@ -103,13 +102,15 @@ function JoinForm() {
 function CreateForm() {
   const router = useRouter();
   const [raceName, setRaceName] = useState("");
-  const [raceDate, setRaceDate] = useState(new Date().toISOString().split("T")[0]);
   const [pin, setPin] = useState("");
+  const [totalLaps, setTotalLaps] = useState("1");
   const [loading, setLoading] = useState(false);
 
   const handleCreate = async () => {
     if (!raceName || !pin) return;
     setLoading(true);
+
+    const laps = parseInt(totalLaps) || 1;
 
     const timers: Record<string, TimerConfig> = {
       timer1: { name: "Timer 1", bibRangeStart: 100, bibRangeEnd: 399, color: "red" },
@@ -118,7 +119,7 @@ function CreateForm() {
     };
 
     try {
-      const raceId = await createRace(raceName, raceDate, pin, timers);
+      const raceId = await createRace(raceName, pin, laps, timers);
       router.push(`/race/${raceId}/overseer?pin=${encodeURIComponent(pin)}`);
     } catch {
       alert("Failed to create race. Check your Firebase config.");
@@ -139,13 +140,17 @@ function CreateForm() {
         />
       </div>
       <div>
-        <label className="block text-sm font-bold text-gray-600 mb-1">Date</label>
+        <label className="block text-sm font-bold text-gray-600 mb-1">Number of Laps</label>
         <input
-          type="date"
-          value={raceDate}
-          onChange={(e) => setRaceDate(e.target.value)}
-          className="w-full h-14 px-4 text-xl border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none"
+          type="number"
+          inputMode="numeric"
+          value={totalLaps}
+          onChange={(e) => setTotalLaps(e.target.value)}
+          min={1}
+          max={99}
+          className="w-full h-14 px-4 text-xl text-center border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none"
         />
+        <p className="text-xs text-gray-400 mt-1">A runner finishes when they complete this many laps</p>
       </div>
       <div>
         <label className="block text-sm font-bold text-gray-600 mb-1">Overseer PIN</label>

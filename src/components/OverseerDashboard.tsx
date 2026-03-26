@@ -1,9 +1,8 @@
 "use client";
 import { useState, useMemo } from "react";
 import { useRaceClock } from "@/hooks/useRaceClock";
-import { useEntries } from "@/hooks/useEntries";
+import { useEntries, getLapCounts } from "@/hooks/useEntries";
 import { useRace, startRace, finishRace } from "@/hooks/useRace";
-import { Race, Entry } from "@/lib/types";
 import { formatTime } from "@/lib/timeFormat";
 import { exportResultsCSV, downloadCSV } from "@/lib/csvExport";
 import RaceClock from "./RaceClock";
@@ -15,30 +14,35 @@ interface OverseerDashboardProps {
 export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
   const race = useRace(raceId);
   const { elapsed, isRunning } = useRaceClock(raceId);
-  const { entries, updateEntry, deleteEntry, isOnline, addEntry } = useEntries(raceId);
-  const [filter, setFilter] = useState<"all" | "unassigned" | "duplicates">("all");
+  const { entries, updateEntry, deleteEntry, isOnline, addEntry, lapCounts } = useEntries(raceId);
+  const [filter, setFilter] = useState<"all" | "unassigned" | "finished" | "in-progress">("all");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBib, setEditBib] = useState("");
   const [showAddEntry, setShowAddEntry] = useState(false);
   const [newBib, setNewBib] = useState("");
   const [newTime, setNewTime] = useState("");
 
-  // Find duplicates
-  const duplicateBibs = useMemo(() => {
-    const bibCounts: Record<number, number> = {};
-    entries.forEach((e) => {
-      if (e.bibNumber !== null) {
-        bibCounts[e.bibNumber] = (bibCounts[e.bibNumber] || 0) + 1;
-      }
-    });
+  const totalLaps = race?.totalLaps || 1;
+
+  // Runners who have completed all laps
+  const finishedBibs = useMemo(() => {
     return new Set(
-      Object.entries(bibCounts)
-        .filter(([, count]) => count > 1)
+      Object.entries(lapCounts)
+        .filter(([, count]) => count >= totalLaps)
         .map(([bib]) => parseInt(bib))
     );
-  }, [entries]);
+  }, [lapCounts, totalLaps]);
 
-  // Missing bibs
+  // Runners in progress (at least 1 lap but not done)
+  const inProgressBibs = useMemo(() => {
+    return new Set(
+      Object.entries(lapCounts)
+        .filter(([, count]) => count > 0 && count < totalLaps)
+        .map(([bib]) => parseInt(bib))
+    );
+  }, [lapCounts, totalLaps]);
+
+  // Bibs with no laps logged at all
   const loggedBibs = useMemo(
     () => new Set(entries.filter((e) => e.bibNumber !== null).map((e) => e.bibNumber!)),
     [entries]
@@ -53,12 +57,14 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
     switch (filter) {
       case "unassigned":
         return entries.filter((e) => e.bibNumber === null);
-      case "duplicates":
-        return entries.filter((e) => e.bibNumber !== null && duplicateBibs.has(e.bibNumber));
+      case "finished":
+        return entries.filter((e) => e.bibNumber !== null && e.lap === totalLaps);
+      case "in-progress":
+        return entries.filter((e) => e.bibNumber !== null && inProgressBibs.has(e.bibNumber));
       default:
         return entries;
     }
-  }, [entries, filter, duplicateBibs]);
+  }, [entries, filter, totalLaps, inProgressBibs]);
 
   const handleStartRace = async () => {
     if (confirm("Start the race? This will begin the clock for all timers.")) {
@@ -73,9 +79,9 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
   };
 
   const handleExport = () => {
-    const csv = exportResultsCSV(entries);
+    const csv = exportResultsCSV(entries, totalLaps);
     if (!csv) {
-      alert("No entries with bib numbers to export.");
+      alert("No finished runners to export.");
       return;
     }
     downloadCSV(csv, `${race?.name || "race"}-results.csv`);
@@ -92,6 +98,7 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
       timerId: "overseer",
       timerName: "Overseer",
       bibNumber: bib,
+      lap: 0,
       finishTime: ms,
       capturedAt: Date.now(),
       status: "logged",
@@ -139,6 +146,7 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
             <h1 className="text-xl font-bold">{race.name}</h1>
             <div className="text-sm text-gray-500">
               Room: <span className="font-mono font-bold">{race.roomCode}</span>
+              {" "}&bull; {totalLaps} lap{totalLaps > 1 ? "s" : ""}
             </div>
           </div>
           <div className="flex gap-2">
@@ -168,40 +176,40 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
         </div>
 
         {/* Stats Row */}
-        <div className="flex gap-3 text-sm">
+        <div className="flex gap-2 text-sm flex-wrap">
           <div className="bg-green-100 text-green-800 px-3 py-1 rounded-lg font-bold">
-            {entries.filter((e) => e.bibNumber !== null).length} logged
+            {finishedBibs.size} finished
+          </div>
+          <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-lg font-bold">
+            {inProgressBibs.size} in progress
           </div>
           <div className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-lg font-bold">
             {entries.filter((e) => e.bibNumber === null).length} unassigned
           </div>
-          <div className="bg-red-100 text-red-800 px-3 py-1 rounded-lg font-bold">
-            {duplicateBibs.size} duplicates
-          </div>
           <div className="bg-gray-200 text-gray-700 px-3 py-1 rounded-lg font-bold">
-            {missingBibs.length} missing
+            {missingBibs.length} not seen
           </div>
         </div>
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex bg-white border-b px-4 py-2 gap-2">
-        {(["all", "unassigned", "duplicates"] as const).map((f) => (
+      <div className="flex bg-white border-b px-4 py-2 gap-2 overflow-x-auto">
+        {(["all", "finished", "in-progress", "unassigned"] as const).map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`px-3 py-1 rounded-lg text-sm font-bold ${
+            className={`px-3 py-1 rounded-lg text-sm font-bold whitespace-nowrap ${
               filter === f
                 ? "bg-gray-800 text-white"
                 : "bg-gray-200 text-gray-600"
             }`}
           >
-            {f.charAt(0).toUpperCase() + f.slice(1)}
+            {f === "in-progress" ? "In Progress" : f.charAt(0).toUpperCase() + f.slice(1)}
           </button>
         ))}
         <button
           onClick={() => setShowAddEntry(!showAddEntry)}
-          className="ml-auto bg-blue-100 text-blue-700 px-3 py-1 rounded-lg text-sm font-bold"
+          className="ml-auto bg-blue-100 text-blue-700 px-3 py-1 rounded-lg text-sm font-bold whitespace-nowrap"
         >
           + Add
         </button>
@@ -238,7 +246,7 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
       {filter === "all" && missingBibs.length > 0 && (
         <details className="bg-gray-50 border-b px-4 py-2">
           <summary className="text-sm font-bold text-gray-600 cursor-pointer">
-            Missing bibs ({missingBibs.length})
+            Not seen yet ({missingBibs.length})
           </summary>
           <div className="flex flex-wrap gap-1 mt-2">
             {missingBibs.map((b) => (
@@ -253,8 +261,9 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
       {/* Entry List */}
       <div className="flex-1 overflow-y-auto px-3 py-2">
         <div className="flex flex-col gap-1">
-          {filteredEntries.map((entry, i) => {
-            const isDuplicate = entry.bibNumber !== null && duplicateBibs.has(entry.bibNumber);
+          {filteredEntries.map((entry) => {
+            const bibLaps = entry.bibNumber !== null ? (lapCounts[entry.bibNumber] || 0) : 0;
+            const isFinalLap = entry.bibNumber !== null && entry.lap === totalLaps;
             const colorMap: Record<string, string> = {
               red: "border-l-red-500",
               blue: "border-l-blue-500",
@@ -268,16 +277,13 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-l-4 ${
                   colorMap[timerColor] || "border-l-gray-400"
                 } ${
-                  isDuplicate
-                    ? "border-red-400 bg-red-50"
+                  isFinalLap
+                    ? "border-green-400 bg-green-50"
                     : entry.bibNumber === null
                     ? "border-yellow-300 bg-yellow-50"
                     : "border-gray-200 bg-white"
                 }`}
               >
-                <div className="text-sm text-gray-500 min-w-[24px]">
-                  {entry.bibNumber !== null ? `#${i + 1}` : ""}
-                </div>
                 <div className="font-mono font-bold text-base min-w-[70px]">
                   {formatTime(entry.finishTime)}
                 </div>
@@ -313,9 +319,12 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
                     {entry.bibNumber !== null ? (
                       <span>
                         Bib #{entry.bibNumber}
-                        {isDuplicate && (
-                          <span className="ml-2 bg-red-500 text-white px-2 py-0.5 rounded text-xs font-bold">
-                            DUPLICATE
+                        <span className="text-sm ml-2 font-normal text-gray-500">
+                          Lap {entry.lap}/{totalLaps}
+                        </span>
+                        {isFinalLap && (
+                          <span className="ml-2 bg-green-500 text-white px-2 py-0.5 rounded text-xs font-bold">
+                            DONE
                           </span>
                         )}
                       </span>

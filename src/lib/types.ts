@@ -1,11 +1,12 @@
 export interface Race {
   id: string;
   name: string;
-  date: string;
+  createdAt: string; // ISO date string, auto-set on creation
   status: "setup" | "active" | "finished";
   startTime: number | null; // server timestamp ms
   roomCode: string;
   overseerPin: string;
+  totalLaps: number; // runner must complete this many laps to finish
   bibs: number[];
   timers: Record<string, TimerConfig>;
 }
@@ -23,6 +24,7 @@ export interface Entry {
   timerId: string;
   timerName: string;
   bibNumber: number | null; // null = unassigned (Quick Capture)
+  lap: number; // which lap this entry represents (1-based, 0 = unknown until bib assigned)
   finishTime: number; // ms elapsed since race start
   capturedAt: number; // server timestamp ms
   status: "logged" | "confirmed" | "disputed";

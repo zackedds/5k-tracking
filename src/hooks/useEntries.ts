@@ -1,65 +1,70 @@
 "use client";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { db } from "@/lib/firebase";
-import {
-  ref,
-  onValue,
-  push,
-  set,
-  update,
-  remove,
-  serverTimestamp,
-  off,
-} from "firebase/database";
+import { ref, onValue, push, set, update, remove } from "firebase/database";
 import { Entry } from "@/lib/types";
 
-export function useEntries(raceId: string | null, timerId?: string) {
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [isOnline, setIsOnline] = useState(true);
-  const localQueueRef = useRef<Entry[]>([]);
+/** Compute lap numbers for all entries based on bib and time order */
+function computeLaps(entries: Entry[]): Entry[] {
+  const bibLapCount: Record<number, number> = {};
+  return entries.map((e) => {
+    if (e.bibNumber === null) return { ...e, lap: 0 };
+    bibLapCount[e.bibNumber] = (bibLapCount[e.bibNumber] || 0) + 1;
+    return { ...e, lap: bibLapCount[e.bibNumber] };
+  });
+}
 
-  // Monitor connection status
+/** Get lap counts per bib: { bibNumber: currentLapCount } */
+export function getLapCounts(entries: Entry[]): Record<number, number> {
+  const counts: Record<number, number> = {};
+  entries.forEach((e) => {
+    if (e.bibNumber !== null) {
+      counts[e.bibNumber] = (counts[e.bibNumber] || 0) + 1;
+    }
+  });
+  return counts;
+}
+
+export function useEntries(raceId: string | null, timerId?: string) {
+  const [rawEntries, setRawEntries] = useState<Entry[]>([]);
+  const [isOnline, setIsOnline] = useState(true);
+
   useEffect(() => {
     const connRef = ref(db, ".info/connected");
     const unsub = onValue(connRef, (snap) => {
-      const connected = snap.val() === true;
-      setIsOnline(connected);
-      // Firebase RTDB handles offline queueing automatically
-      // Writes made offline are queued and synced on reconnect
+      setIsOnline(snap.val() === true);
     });
     return () => unsub();
   }, []);
 
-  // Listen to entries
   useEffect(() => {
     if (!raceId) return;
     const entriesRef = ref(db, `entries/${raceId}`);
     const unsub = onValue(entriesRef, (snap) => {
       const data = snap.val();
       if (!data) {
-        setEntries([]);
+        setRawEntries([]);
         return;
       }
       const list: Entry[] = Object.entries(data).map(([key, val]) => ({
         ...(val as Entry),
         id: key,
       }));
-      // Sort by finishTime
       list.sort((a, b) => a.finishTime - b.finishTime);
-      setEntries(list);
+      setRawEntries(list);
     });
     return () => unsub();
   }, [raceId]);
+
+  // Entries with computed lap numbers
+  const entries = useMemo(() => computeLaps(rawEntries), [rawEntries]);
 
   const addEntry = useCallback(
     (entry: Omit<Entry, "id">) => {
       if (!raceId) return;
       const entriesRef = ref(db, `entries/${raceId}`);
       const newRef = push(entriesRef);
-      set(newRef, {
-        ...entry,
-        raceId,
-      });
+      set(newRef, { ...entry, raceId });
     },
     [raceId]
   );
@@ -82,10 +87,11 @@ export function useEntries(raceId: string | null, timerId?: string) {
     [raceId]
   );
 
-  // Filter entries for a specific timer if timerId is provided
   const myEntries = timerId
     ? entries.filter((e) => e.timerId === timerId)
     : entries;
+
+  const lapCounts = useMemo(() => getLapCounts(entries), [entries]);
 
   return {
     entries,
@@ -94,5 +100,6 @@ export function useEntries(raceId: string | null, timerId?: string) {
     updateEntry,
     deleteEntry,
     isOnline,
+    lapCounts,
   };
 }

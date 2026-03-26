@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { ref, onValue, set, update, get, push } from "firebase/database";
 import { Race, TimerConfig } from "@/lib/types";
@@ -25,9 +25,9 @@ export function useRace(raceId: string | null) {
 }
 
 function generateRoomCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous chars
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 4; i++) {
     code += chars[Math.floor(Math.random() * chars.length)];
   }
   return code;
@@ -35,13 +35,12 @@ function generateRoomCode(): string {
 
 export async function createRace(
   name: string,
-  date: string,
   overseerPin: string,
+  totalLaps: number,
   timers: Record<string, TimerConfig>
 ): Promise<string> {
   const roomCode = generateRoomCode();
 
-  // Generate bib list from timer ranges
   const bibs: number[] = [];
   Object.values(timers).forEach((t) => {
     for (let i = t.bibRangeStart; i <= t.bibRangeEnd; i++) {
@@ -55,18 +54,17 @@ export async function createRace(
 
   const race: Omit<Race, "id"> = {
     name,
-    date,
+    createdAt: new Date().toISOString(),
     status: "setup",
     startTime: null,
     roomCode,
     overseerPin,
+    totalLaps,
     bibs,
     timers,
   };
 
   await set(newRaceRef, race);
-
-  // Also store a lookup by room code
   await set(ref(db, `roomCodes/${roomCode}`), raceId);
 
   return raceId;
@@ -78,11 +76,9 @@ export async function lookupRoomCode(code: string): Promise<string | null> {
 }
 
 export async function startRace(raceId: string) {
-  const serverNow = Date.now(); // Will be close enough; offset is handled client-side
-  // Use a more precise approach: write server timestamp
   await update(ref(db, `races/${raceId}`), {
     status: "active",
-    startTime: serverNow,
+    startTime: Date.now(),
   });
 }
 

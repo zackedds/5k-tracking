@@ -10,6 +10,8 @@ interface EntryListProps {
   onAssignBib?: (entryId: string, bib: number) => void;
   onDelete?: (entryId: string) => void;
   compact?: boolean;
+  totalLaps?: number;
+  lapCounts?: Record<number, number>;
 }
 
 export default function EntryList({
@@ -19,6 +21,8 @@ export default function EntryList({
   onAssignBib,
   onDelete,
   compact = false,
+  totalLaps = 1,
+  lapCounts = {},
 }: EntryListProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBib, setEditBib] = useState("");
@@ -48,6 +52,9 @@ export default function EntryList({
         const unassigned = entry.bibNumber === null;
         const outOfRange =
           entry.bibNumber !== null && !isInRange(entry.bibNumber);
+        const bibLaps = entry.bibNumber !== null ? (lapCounts[entry.bibNumber] || 0) : 0;
+        const isFinished = entry.bibNumber !== null && bibLaps >= totalLaps;
+        const isFinalLap = entry.lap === totalLaps;
 
         return (
           <div
@@ -55,9 +62,11 @@ export default function EntryList({
             className={`flex items-center gap-3 px-3 py-2 rounded-lg border-2 ${
               unassigned
                 ? "border-yellow-400 bg-yellow-50"
+                : isFinalLap
+                ? "border-green-500 bg-green-100"
                 : outOfRange
                 ? "border-amber-400 bg-amber-50"
-                : "border-green-400 bg-green-50"
+                : "border-gray-300 bg-white"
             } ${compact ? "text-sm" : ""}`}
           >
             <div className="font-mono text-lg font-bold min-w-[80px]">
@@ -110,7 +119,7 @@ export default function EntryList({
                   ) : (
                     <span
                       className={`font-bold text-xl ${
-                        outOfRange ? "text-amber-700" : "text-green-800"
+                        isFinalLap ? "text-green-700" : outOfRange ? "text-amber-700" : "text-gray-800"
                       }`}
                       onClick={() => {
                         if (onAssignBib) {
@@ -120,6 +129,14 @@ export default function EntryList({
                       }}
                     >
                       Bib #{entry.bibNumber}
+                      <span className="text-sm ml-2 font-normal text-gray-500">
+                        Lap {entry.lap}/{totalLaps}
+                      </span>
+                      {isFinalLap && (
+                        <span className="ml-2 bg-green-500 text-white px-2 py-0.5 rounded text-xs font-bold">
+                          DONE
+                        </span>
+                      )}
                       {outOfRange && (
                         <span className="text-xs ml-2 text-amber-600">
                           OUT OF RANGE

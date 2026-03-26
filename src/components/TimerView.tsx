@@ -3,7 +3,7 @@ import { useState, useCallback, useRef } from "react";
 import { useRaceClock } from "@/hooks/useRaceClock";
 import { useEntries } from "@/hooks/useEntries";
 import { useRace } from "@/hooks/useRace";
-import { Entry, TimerMode, TimerConfig } from "@/lib/types";
+import { TimerMode, TimerConfig } from "@/lib/types";
 import RaceClock from "./RaceClock";
 import EntryList from "./EntryList";
 import QuickCapture from "./QuickCapture";
@@ -15,11 +15,14 @@ interface TimerViewProps {
 }
 
 export default function TimerView({ raceId, timerId, timerConfig }: TimerViewProps) {
-  const { elapsed, isRunning, getServerNow, getElapsedAt, startTime } = useRaceClock(raceId);
-  const { myEntries, addEntry, updateEntry, deleteEntry, isOnline } = useEntries(raceId, timerId);
+  const race = useRace(raceId);
+  const { elapsed, isRunning, getServerNow, startTime } = useRaceClock(raceId);
+  const { myEntries, addEntry, updateEntry, deleteEntry, isOnline, lapCounts } = useEntries(raceId, timerId);
   const [mode, setMode] = useState<TimerMode>("normal");
   const [bibInput, setBibInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const totalLaps = race?.totalLaps || 1;
 
   const vibrate = (ms: number) => {
     if (typeof navigator !== "undefined" && navigator.vibrate) {
@@ -38,6 +41,7 @@ export default function TimerView({ raceId, timerId, timerConfig }: TimerViewPro
         timerId,
         timerName: timerConfig.name,
         bibNumber,
+        lap: 0, // computed dynamically by useEntries
         finishTime,
         capturedAt: now,
         status: "logged",
@@ -66,6 +70,10 @@ export default function TimerView({ raceId, timerId, timerConfig }: TimerViewPro
 
   const unassignedCount = myEntries.filter((e) => e.bibNumber === null).length;
 
+  // Show lap info for the bib currently being typed
+  const previewBib = parseInt(bibInput);
+  const previewLaps = !isNaN(previewBib) ? (lapCounts[previewBib] || 0) : null;
+
   if (mode === "quickCapture") {
     return (
       <div className="h-dvh flex flex-col">
@@ -77,7 +85,7 @@ export default function TimerView({ raceId, timerId, timerConfig }: TimerViewPro
         <RaceClock elapsed={elapsed} isRunning={isRunning} color={timerConfig.color} />
         <QuickCapture
           onCapture={handleQuickCapture}
-          captureCount={myEntries.filter((e) => e.bibNumber === null).length + myEntries.filter(e => e.bibNumber !== null).length}
+          captureCount={myEntries.length}
           isRunning={isRunning}
         />
         <div className="p-3 bg-gray-100">
@@ -85,7 +93,7 @@ export default function TimerView({ raceId, timerId, timerConfig }: TimerViewPro
             onClick={() => setMode("normal")}
             className="w-full bg-gray-700 text-white py-3 rounded-xl font-bold text-lg"
           >
-            ← Back to Normal Mode
+            Back to Normal Mode
             {unassignedCount > 0 && (
               <span className="ml-2 bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded-full text-sm">
                 {unassignedCount} unassigned
@@ -112,7 +120,7 @@ export default function TimerView({ raceId, timerId, timerConfig }: TimerViewPro
           onClick={() => setMode("quickCapture")}
           className="w-full bg-orange-500 text-white py-3 rounded-xl font-bold text-lg shadow-lg"
         >
-          ⚡ Quick Capture Mode
+          Quick Capture Mode
           {unassignedCount > 0 && (
             <span className="ml-2 bg-yellow-300 text-yellow-900 px-2 py-0.5 rounded-full text-sm">
               {unassignedCount} unassigned
@@ -146,6 +154,15 @@ export default function TimerView({ raceId, timerId, timerConfig }: TimerViewPro
             LOG
           </button>
         </div>
+        {/* Lap preview for the bib being typed */}
+        {previewLaps !== null && previewLaps > 0 && (
+          <div className={`text-center mt-2 font-bold text-sm ${
+            previewLaps >= totalLaps ? "text-green-600" : "text-blue-600"
+          }`}>
+            Bib #{previewBib}: {previewLaps}/{totalLaps} laps
+            {previewLaps >= totalLaps && " — FINISHED"}
+          </div>
+        )}
         {!isRunning && (
           <div className="text-center text-gray-500 mt-2 text-sm">
             Waiting for race to start...
@@ -157,7 +174,7 @@ export default function TimerView({ raceId, timerId, timerConfig }: TimerViewPro
       <div className="flex-1 overflow-y-auto px-3 pb-3">
         <div className="flex items-center justify-between mb-2">
           <h3 className="font-bold text-gray-600 text-sm uppercase">
-            My Entries ({myEntries.length})
+            My Entries ({myEntries.length}) — {totalLaps} lap race
           </h3>
           {unassignedCount > 0 && (
             <span className="bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded-full text-xs font-bold">
@@ -171,6 +188,8 @@ export default function TimerView({ raceId, timerId, timerConfig }: TimerViewPro
           bibRangeEnd={timerConfig.bibRangeEnd}
           onAssignBib={handleAssignBib}
           onDelete={deleteEntry}
+          totalLaps={totalLaps}
+          lapCounts={lapCounts}
         />
       </div>
     </div>
