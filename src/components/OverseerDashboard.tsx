@@ -1,7 +1,7 @@
 "use client";
 import { useState, useMemo } from "react";
 import { useRaceClock } from "@/hooks/useRaceClock";
-import { useEntries, getLapCounts } from "@/hooks/useEntries";
+import { useEntries } from "@/hooks/useEntries";
 import { useRace, startRace, finishRace } from "@/hooks/useRace";
 import { formatTime } from "@/lib/timeFormat";
 import { exportResultsCSV, downloadCSV } from "@/lib/csvExport";
@@ -15,7 +15,7 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
   const race = useRace(raceId);
   const { elapsed, isRunning } = useRaceClock(raceId);
   const { entries, updateEntry, deleteEntry, isOnline, addEntry, lapCounts } = useEntries(raceId);
-  const [filter, setFilter] = useState<"all" | "unassigned" | "finished" | "in-progress">("all");
+  const [filter, setFilter] = useState<"all" | "unassigned" | "finished" | "in-progress" | "flagged">("all");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBib, setEditBib] = useState("");
   const [showAddEntry, setShowAddEntry] = useState(false);
@@ -42,6 +42,21 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
     );
   }, [lapCounts, totalLaps]);
 
+  // Flagged entries
+  const flaggedCount = useMemo(
+    () => entries.filter((e) => e.status === "disputed").length,
+    [entries]
+  );
+
+  // Bibs with more laps than expected (over-logged)
+  const overLoggedBibs = useMemo(() => {
+    return new Set(
+      Object.entries(lapCounts)
+        .filter(([, count]) => count > totalLaps)
+        .map(([bib]) => parseInt(bib))
+    );
+  }, [lapCounts, totalLaps]);
+
   // Bibs with no laps logged at all
   const loggedBibs = useMemo(
     () => new Set(entries.filter((e) => e.bibNumber !== null).map((e) => e.bibNumber!)),
@@ -52,6 +67,8 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
     [race?.bibs, loggedBibs]
   );
 
+  const unassignedCount = entries.filter((e) => e.bibNumber === null).length;
+
   // Filtered entries
   const filteredEntries = useMemo(() => {
     switch (filter) {
@@ -61,6 +78,8 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
         return entries.filter((e) => e.bibNumber !== null && e.lap === totalLaps);
       case "in-progress":
         return entries.filter((e) => e.bibNumber !== null && inProgressBibs.has(e.bibNumber));
+      case "flagged":
+        return entries.filter((e) => e.status === "disputed");
       default:
         return entries;
     }
@@ -79,6 +98,25 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
   };
 
   const handleExport = () => {
+    // Warn about issues before export
+    const warnings: string[] = [];
+    if (unassignedCount > 0) {
+      warnings.push(`${unassignedCount} entries have no bib assigned`);
+    }
+    if (flaggedCount > 0) {
+      warnings.push(`${flaggedCount} entries are flagged for review`);
+    }
+    if (overLoggedBibs.size > 0) {
+      warnings.push(`${overLoggedBibs.size} bibs have more laps than expected`);
+    }
+
+    if (warnings.length > 0) {
+      const proceed = confirm(
+        `Warning before export:\n\n${warnings.map((w) => "- " + w).join("\n")}\n\nExport anyway?`
+      );
+      if (!proceed) return;
+    }
+
     const csv = exportResultsCSV(entries, totalLaps);
     if (!csv) {
       alert("No finished runners to export.");
@@ -116,6 +154,10 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
     }
     setEditingId(null);
     setEditBib("");
+  };
+
+  const handleUnflag = (entryId: string) => {
+    updateEntry(entryId, { status: "confirmed" });
   };
 
   if (!race) {
@@ -184,8 +226,18 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
             {inProgressBibs.size} in progress
           </div>
           <div className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-lg font-bold">
-            {entries.filter((e) => e.bibNumber === null).length} unassigned
+            {unassignedCount} unassigned
           </div>
+          {flaggedCount > 0 && (
+            <div className="bg-red-100 text-red-800 px-3 py-1 rounded-lg font-bold">
+              {flaggedCount} flagged
+            </div>
+          )}
+          {overLoggedBibs.size > 0 && (
+            <div className="bg-red-100 text-red-800 px-3 py-1 rounded-lg font-bold">
+              {overLoggedBibs.size} over-logged
+            </div>
+          )}
           <div className="bg-gray-200 text-gray-700 px-3 py-1 rounded-lg font-bold">
             {missingBibs.length} not seen
           </div>
@@ -194,19 +246,30 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
 
       {/* Filter Tabs */}
       <div className="flex bg-white border-b px-4 py-2 gap-2 overflow-x-auto">
-        {(["all", "finished", "in-progress", "unassigned"] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-3 py-1 rounded-lg text-sm font-bold whitespace-nowrap ${
-              filter === f
-                ? "bg-gray-800 text-white"
-                : "bg-gray-200 text-gray-600"
-            }`}
-          >
-            {f === "in-progress" ? "In Progress" : f.charAt(0).toUpperCase() + f.slice(1)}
-          </button>
-        ))}
+        {(["all", "finished", "in-progress", "unassigned", "flagged"] as const).map((f) => {
+          const labels: Record<string, string> = {
+            all: "All",
+            finished: "Finished",
+            "in-progress": "In Progress",
+            unassigned: "Unassigned",
+            flagged: `Flagged (${flaggedCount})`,
+          };
+          // Hide flagged tab if none
+          if (f === "flagged" && flaggedCount === 0) return null;
+          return (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`px-3 py-1 rounded-lg text-sm font-bold whitespace-nowrap ${
+                filter === f
+                  ? f === "flagged" ? "bg-red-600 text-white" : "bg-gray-800 text-white"
+                  : f === "flagged" ? "bg-red-100 text-red-700" : "bg-gray-200 text-gray-600"
+              }`}
+            >
+              {labels[f]}
+            </button>
+          );
+        })}
         <button
           onClick={() => setShowAddEntry(!showAddEntry)}
           className="ml-auto bg-blue-100 text-blue-700 px-3 py-1 rounded-lg text-sm font-bold whitespace-nowrap"
@@ -262,8 +325,9 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
       <div className="flex-1 overflow-y-auto px-3 py-2">
         <div className="flex flex-col gap-1">
           {filteredEntries.map((entry) => {
-            const bibLaps = entry.bibNumber !== null ? (lapCounts[entry.bibNumber] || 0) : 0;
             const isFinalLap = entry.bibNumber !== null && entry.lap === totalLaps;
+            const isFlagged = entry.status === "disputed";
+            const isOverLogged = entry.bibNumber !== null && overLoggedBibs.has(entry.bibNumber);
             const colorMap: Record<string, string> = {
               red: "border-l-red-500",
               blue: "border-l-blue-500",
@@ -277,7 +341,11 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-l-4 ${
                   colorMap[timerColor] || "border-l-gray-400"
                 } ${
-                  isFinalLap
+                  isFlagged
+                    ? "border-red-400 bg-red-50"
+                    : isOverLogged
+                    ? "border-orange-400 bg-orange-50"
+                    : isFinalLap
                     ? "border-green-400 bg-green-50"
                     : entry.bibNumber === null
                     ? "border-yellow-300 bg-yellow-50"
@@ -297,6 +365,10 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
                       onChange={(e) => setEditBib(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") handleSaveEdit(entry.id);
+                        if (e.key === "Escape") {
+                          setEditingId(null);
+                          setEditBib("");
+                        }
                       }}
                       autoFocus
                       className="w-20 h-8 text-center border-2 border-blue-400 rounded font-bold"
@@ -319,12 +391,22 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
                     {entry.bibNumber !== null ? (
                       <span>
                         Bib #{entry.bibNumber}
-                        <span className="text-sm ml-2 font-normal text-gray-500">
-                          Lap {entry.lap}/{totalLaps}
+                        <span className="text-sm ml-1 font-normal text-gray-500">
+                          L{entry.lap}/{totalLaps}
                         </span>
                         {isFinalLap && (
-                          <span className="ml-2 bg-green-500 text-white px-2 py-0.5 rounded text-xs font-bold">
+                          <span className="ml-1 bg-green-500 text-white px-2 py-0.5 rounded text-xs font-bold">
                             DONE
+                          </span>
+                        )}
+                        {isFlagged && (
+                          <span className="ml-1 bg-red-500 text-white px-2 py-0.5 rounded text-xs font-bold">
+                            FLAGGED
+                          </span>
+                        )}
+                        {isOverLogged && !isFlagged && (
+                          <span className="ml-1 bg-orange-500 text-white px-2 py-0.5 rounded text-xs font-bold">
+                            EXTRA LAP
                           </span>
                         )}
                       </span>
@@ -334,15 +416,26 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
                   </div>
                 )}
 
-                <div className="text-xs text-gray-400">{entry.timerName}</div>
-                <button
-                  onClick={() => {
-                    if (confirm("Delete this entry?")) deleteEntry(entry.id);
-                  }}
-                  className="text-red-400 text-sm px-1"
-                >
-                  ✕
-                </button>
+                <div className="text-xs text-gray-400 min-w-[48px] text-right">{entry.timerName}</div>
+
+                <div className="flex gap-1">
+                  {isFlagged && (
+                    <button
+                      onClick={() => handleUnflag(entry.id)}
+                      className="bg-green-500 text-white text-xs px-2 py-1 rounded font-bold"
+                    >
+                      Clear
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      if (confirm("Delete this entry?")) deleteEntry(entry.id);
+                    }}
+                    className="text-red-400 text-sm px-1"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
             );
           })}

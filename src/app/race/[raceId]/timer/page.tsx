@@ -13,10 +13,25 @@ function TimerPageInner() {
   const [selectedTimer, setSelectedTimer] = useState<string | null>(null);
   const [timerName, setTimerName] = useState("");
 
+  // Restore timer name and selection from localStorage on mount
   useEffect(() => {
     const name = searchParams.get("name") || localStorage.getItem("timerName") || "";
     setTimerName(name);
-  }, [searchParams]);
+
+    const savedTimer = localStorage.getItem(`timer_${raceId}`);
+    if (savedTimer) setSelectedTimer(savedTimer);
+  }, [searchParams, raceId]);
+
+  // Persist timer selection
+  const handleSelectTimer = (timerId: string) => {
+    setSelectedTimer(timerId);
+    localStorage.setItem(`timer_${raceId}`, timerId);
+  };
+
+  const handleChangeTimer = () => {
+    setSelectedTimer(null);
+    localStorage.removeItem(`timer_${raceId}`);
+  };
 
   if (!race) {
     return (
@@ -31,7 +46,11 @@ function TimerPageInner() {
       ...race.timers[selectedTimer],
       name: timerName || race.timers[selectedTimer].name,
     };
-    return <TimerView raceId={raceId} timerId={selectedTimer} timerConfig={config} />;
+    return (
+      <div className="h-dvh flex flex-col">
+        <TimerView raceId={raceId} timerId={selectedTimer} timerConfig={config} />
+      </div>
+    );
   }
 
   const timerEntries = Object.entries(race.timers || {});
@@ -40,8 +59,11 @@ function TimerPageInner() {
     <div className="min-h-dvh flex flex-col items-center justify-center p-6 bg-gray-50">
       <div className="w-full max-w-md">
         <h1 className="text-2xl font-black text-center mb-1">{race.name}</h1>
-        <p className="text-gray-500 text-center mb-6">
+        <p className="text-gray-500 text-center mb-2">
           Hi {timerName}! Pick your timer position:
+        </p>
+        <p className="text-xs text-gray-400 text-center mb-6">
+          Your selection is saved — if you refresh, you&apos;ll come right back.
         </p>
 
         <div className="flex flex-col gap-3">
@@ -55,7 +77,7 @@ function TimerPageInner() {
             return (
               <button
                 key={id}
-                onClick={() => setSelectedTimer(id)}
+                onClick={() => handleSelectTimer(id)}
                 className={`${colorClasses[timer.color] || "bg-gray-500"} text-white py-5 rounded-2xl font-bold text-xl shadow-lg transition-transform active:scale-95`}
               >
                 <div>{timer.name}</div>
