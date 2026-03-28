@@ -355,124 +355,133 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
         </div>
       )}
 
+      {/* Column Header */}
+      <div className="flex items-center px-4 py-2 bg-gray-200 text-xs font-bold text-gray-500 uppercase tracking-wide">
+        <div className="w-[80px] text-center">Time</div>
+        <div className="w-[72px] text-center">Bib</div>
+        <div className="w-[56px] text-center">Lap</div>
+        <div className="flex-1 text-center">Status</div>
+        <div className="w-[56px] text-right">By</div>
+        <div className="w-[28px]" />
+      </div>
+
       {/* Entry List */}
-      <div className="flex-1 overflow-y-auto px-3 py-2">
-        <div className="flex flex-col gap-1">
-          {filteredEntries.map((entry) => {
-            const isFinalLap =
-              entry.bibNumber !== null && !entry.isDuplicate && entry.lap === totalLaps;
-            const isFlagged = entry.status === "disputed";
-            const isDuplicate = entry.isDuplicate;
+      <div className="flex-1 overflow-y-auto">
+        {filteredEntries.map((entry) => {
+          const isFinalLap = !entry.isDuplicate && entry.lap === totalLaps;
+          const isFlagged = entry.status === "disputed";
+          const isDuplicate = entry.isDuplicate;
 
-            return (
-              <div
-                key={entry.id}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 ${
-                  isDuplicate
-                    ? "border-gray-300 bg-gray-100 opacity-50"
-                    : isFlagged
-                    ? "border-red-400 bg-red-50"
-                    : isFinalLap
-                    ? "border-green-400 bg-green-50"
-                    : "border-gray-200 bg-white"
-                }`}
-              >
-                <div className="font-mono font-bold text-base min-w-[70px]">
-                  {formatTime(entry.finishTime)}
-                </div>
+          return (
+            <div
+              key={entry.id}
+              className={`flex items-center px-4 py-2.5 border-b ${
+                isDuplicate
+                  ? "bg-gray-50 opacity-50"
+                  : isFlagged
+                  ? "bg-red-50"
+                  : isFinalLap
+                  ? "bg-green-50"
+                  : "bg-white"
+              }`}
+            >
+              {/* Time */}
+              <div className="w-[80px] text-center font-mono font-bold text-sm">
+                {formatTime(entry.finishTime)}
+              </div>
 
-                {editingId === entry.id ? (
-                  <div className="flex items-center gap-1 flex-1">
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      value={editBib}
-                      onChange={(e) => setEditBib(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleSaveEdit(entry.id);
-                        if (e.key === "Escape") {
-                          setEditingId(null);
-                          setEditBib("");
-                        }
-                      }}
-                      autoFocus
-                      className="w-20 h-8 text-center border-2 border-blue-400 rounded font-bold"
-                    />
-                    <button
-                      onClick={() => handleSaveEdit(entry.id)}
-                      className="bg-blue-500 text-white px-2 py-1 rounded text-sm font-bold"
-                    >
-                      OK
-                    </button>
-                  </div>
-                ) : (
-                  <div
-                    className="flex-1 font-bold cursor-pointer"
-                    onClick={() => {
-                      setEditingId(entry.id);
-                      setEditBib(entry.bibNumber?.toString() || "");
-                    }}
-                  >
-                    <span
-                      className={
-                        isDuplicate
-                          ? "text-gray-400 line-through"
-                          : isFlagged
-                          ? "text-red-700"
-                          : ""
+              {/* Bib */}
+              {editingId === entry.id ? (
+                <div className="w-[72px] flex items-center gap-1">
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={editBib}
+                    onChange={(e) => setEditBib(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSaveEdit(entry.id);
+                      if (e.key === "Escape") {
+                        setEditingId(null);
+                        setEditBib("");
                       }
-                    >
-                      Bib #{entry.bibNumber}
-                      {!isDuplicate && (
-                        <span className="text-sm ml-1 font-normal text-gray-500">
-                          L{entry.lap}/{totalLaps}
-                        </span>
-                      )}
-                      {isFinalLap && (
-                        <span className="ml-1 bg-green-500 text-white px-2 py-0.5 rounded text-xs font-bold">
-                          DONE
-                        </span>
-                      )}
-                      {isDuplicate && (
-                        <span className="ml-1 bg-gray-400 text-white px-2 py-0.5 rounded text-xs font-bold no-underline">
-                          DUP
-                        </span>
-                      )}
-                      {isFlagged && !isDuplicate && (
-                        <span className="ml-1 bg-red-500 text-white px-2 py-0.5 rounded text-xs font-bold">
-                          FLAGGED
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                )}
-
-                <div className="text-xs text-gray-400 min-w-[48px] text-right">
-                  {entry.timerName}
+                    }}
+                    autoFocus
+                    className="w-14 h-7 text-center border-2 border-blue-400 rounded text-sm font-bold"
+                  />
+                  <button
+                    onClick={() => handleSaveEdit(entry.id)}
+                    className="text-blue-600 font-bold text-xs"
+                  >
+                    OK
+                  </button>
                 </div>
+              ) : (
+                <div
+                  className={`w-[72px] text-center font-bold text-lg cursor-pointer ${
+                    isDuplicate ? "text-gray-400 line-through" : isFlagged ? "text-red-700" : "text-gray-900"
+                  }`}
+                  onClick={() => {
+                    setEditingId(entry.id);
+                    setEditBib(entry.bibNumber.toString());
+                  }}
+                >
+                  {entry.bibNumber}
+                </div>
+              )}
 
-                <div className="flex gap-1">
-                  {isFlagged && (
+              {/* Lap */}
+              <div className={`w-[56px] text-center font-mono text-sm ${
+                isDuplicate ? "text-gray-400" : "text-gray-600"
+              }`}>
+                {isDuplicate ? "—" : `${entry.lap}/${totalLaps}`}
+              </div>
+
+              {/* Status */}
+              <div className="flex-1 text-center">
+                {isFinalLap && (
+                  <span className="bg-green-500 text-white px-2 py-0.5 rounded text-xs font-bold">
+                    DONE
+                  </span>
+                )}
+                {isDuplicate && (
+                  <span className="bg-gray-400 text-white px-2 py-0.5 rounded text-xs font-bold">
+                    DUP
+                  </span>
+                )}
+                {isFlagged && !isDuplicate && (
+                  <span className="inline-flex items-center gap-1">
+                    <span className="bg-red-500 text-white px-2 py-0.5 rounded text-xs font-bold">
+                      FLAGGED
+                    </span>
                     <button
                       onClick={() => handleUnflag(entry.id)}
-                      className="bg-green-500 text-white text-xs px-2 py-1 rounded font-bold"
+                      className="bg-green-500 text-white text-xs px-1.5 py-0.5 rounded font-bold"
                     >
                       Clear
                     </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      if (confirm("Delete this entry?")) deleteEntry(entry.id);
-                    }}
-                    className="text-red-400 text-sm px-1"
-                  >
-                    ✕
-                  </button>
-                </div>
+                  </span>
+                )}
               </div>
-            );
-          })}
-        </div>
+
+              {/* Timer name */}
+              <div className="w-[56px] text-right text-xs text-gray-400 truncate">
+                {entry.timerName}
+              </div>
+
+              {/* Delete */}
+              <div className="w-[28px] text-right">
+                <button
+                  onClick={() => {
+                    if (confirm("Delete this entry?")) deleteEntry(entry.id);
+                  }}
+                  className="text-red-400 text-sm px-1"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
