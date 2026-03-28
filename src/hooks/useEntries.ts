@@ -17,10 +17,6 @@ function processEntries(rawEntries: Entry[], dedupWindowMs: number): Entry[] {
   const lapCount: Record<number, number> = {};
 
   return rawEntries.map((e) => {
-    if (e.bibNumber === null) {
-      return { ...e, lap: 0, isDuplicate: false };
-    }
-
     const bib = e.bibNumber;
     const prevTime = lastValidTime[bib];
     const isDuplicate =
@@ -41,7 +37,7 @@ function processEntries(rawEntries: Entry[], dedupWindowMs: number): Entry[] {
 export function getLapCounts(entries: Entry[]): Record<number, number> {
   const counts: Record<number, number> = {};
   entries.forEach((e) => {
-    if (e.bibNumber !== null && !e.isDuplicate) {
+    if (!e.isDuplicate) {
       counts[e.bibNumber] = (counts[e.bibNumber] || 0) + 1;
     }
   });

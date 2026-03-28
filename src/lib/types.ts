@@ -15,12 +15,10 @@ export interface Entry {
   raceId: string;
   timerId: string; // unique per browser session
   timerName: string; // volunteer's name
-  bibNumber: number | null; // null = unassigned (Quick Capture)
+  bibNumber: number; // bib number
   lap: number; // computed dynamically, not stored
   isDuplicate: boolean; // flagged by dedup logic
   finishTime: number; // ms elapsed since race start
   capturedAt: number; // server timestamp ms
   status: "logged" | "confirmed" | "disputed";
 }
-
-export type TimerMode = "normal" | "quickCapture";

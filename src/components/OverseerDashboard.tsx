@@ -19,7 +19,7 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
   const { entries, updateEntry, deleteEntry, isOnline, addEntry, lapCounts } =
     useEntries(raceId, dedupSeconds);
   const [filter, setFilter] = useState<
-    "all" | "unassigned" | "finished" | "in-progress" | "flagged" | "duplicates"
+    "all" | "finished" | "in-progress" | "flagged" | "duplicates"
   >("all");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBib, setEditBib] = useState("");
@@ -58,8 +58,6 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
     [entries]
   );
 
-  const unassignedCount = entries.filter((e) => e.bibNumber === null).length;
-
   // Unique timer names connected
   const activeTimers = useMemo(() => {
     const names = new Set(entries.map((e) => e.timerName));
@@ -68,15 +66,13 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
 
   const filteredEntries = useMemo(() => {
     switch (filter) {
-      case "unassigned":
-        return entries.filter((e) => e.bibNumber === null);
       case "finished":
         return entries.filter(
-          (e) => e.bibNumber !== null && !e.isDuplicate && e.lap === totalLaps
+          (e) => !e.isDuplicate && e.lap === totalLaps
         );
       case "in-progress":
         return entries.filter(
-          (e) => e.bibNumber !== null && !e.isDuplicate && inProgressBibs.has(e.bibNumber)
+          (e) => !e.isDuplicate && inProgressBibs.has(e.bibNumber)
         );
       case "flagged":
         return entries.filter((e) => e.status === "disputed");
@@ -101,7 +97,6 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
 
   const handleExport = () => {
     const warnings: string[] = [];
-    if (unassignedCount > 0) warnings.push(`${unassignedCount} entries have no bib assigned`);
     if (flaggedCount > 0) warnings.push(`${flaggedCount} entries are flagged for review`);
 
     if (warnings.length > 0) {
@@ -284,9 +279,6 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
           <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-lg font-bold">
             {inProgressBibs.size} in progress
           </div>
-          <div className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-lg font-bold">
-            {unassignedCount} unassigned
-          </div>
           {duplicateCount > 0 && (
             <div className="bg-gray-200 text-gray-600 px-3 py-1 rounded-lg font-bold">
               {duplicateCount} dups
@@ -303,13 +295,12 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
       {/* Filter Tabs */}
       <div className="flex bg-white border-b px-4 py-2 gap-2 overflow-x-auto">
         {(
-          ["all", "finished", "in-progress", "unassigned", "duplicates", "flagged"] as const
+          ["all", "finished", "in-progress", "duplicates", "flagged"] as const
         ).map((f) => {
           const labels: Record<string, string> = {
             all: "All",
             finished: "Finished",
             "in-progress": "In Progress",
-            unassigned: "Unassigned",
             duplicates: `Dups (${duplicateCount})`,
             flagged: `Flagged (${flaggedCount})`,
           };
@@ -383,8 +374,6 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
                     ? "border-red-400 bg-red-50"
                     : isFinalLap
                     ? "border-green-400 bg-green-50"
-                    : entry.bibNumber === null
-                    ? "border-yellow-300 bg-yellow-50"
                     : "border-gray-200 bg-white"
                 }`}
               >
@@ -424,41 +413,37 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
                       setEditBib(entry.bibNumber?.toString() || "");
                     }}
                   >
-                    {entry.bibNumber !== null ? (
-                      <span
-                        className={
-                          isDuplicate
-                            ? "text-gray-400 line-through"
-                            : isFlagged
-                            ? "text-red-700"
-                            : ""
-                        }
-                      >
-                        Bib #{entry.bibNumber}
-                        {!isDuplicate && (
-                          <span className="text-sm ml-1 font-normal text-gray-500">
-                            L{entry.lap}/{totalLaps}
-                          </span>
-                        )}
-                        {isFinalLap && (
-                          <span className="ml-1 bg-green-500 text-white px-2 py-0.5 rounded text-xs font-bold">
-                            DONE
-                          </span>
-                        )}
-                        {isDuplicate && (
-                          <span className="ml-1 bg-gray-400 text-white px-2 py-0.5 rounded text-xs font-bold no-underline">
-                            DUP
-                          </span>
-                        )}
-                        {isFlagged && !isDuplicate && (
-                          <span className="ml-1 bg-red-500 text-white px-2 py-0.5 rounded text-xs font-bold">
-                            FLAGGED
-                          </span>
-                        )}
-                      </span>
-                    ) : (
-                      <span className="text-yellow-600">??? Unassigned</span>
-                    )}
+                    <span
+                      className={
+                        isDuplicate
+                          ? "text-gray-400 line-through"
+                          : isFlagged
+                          ? "text-red-700"
+                          : ""
+                      }
+                    >
+                      Bib #{entry.bibNumber}
+                      {!isDuplicate && (
+                        <span className="text-sm ml-1 font-normal text-gray-500">
+                          L{entry.lap}/{totalLaps}
+                        </span>
+                      )}
+                      {isFinalLap && (
+                        <span className="ml-1 bg-green-500 text-white px-2 py-0.5 rounded text-xs font-bold">
+                          DONE
+                        </span>
+                      )}
+                      {isDuplicate && (
+                        <span className="ml-1 bg-gray-400 text-white px-2 py-0.5 rounded text-xs font-bold no-underline">
+                          DUP
+                        </span>
+                      )}
+                      {isFlagged && !isDuplicate && (
+                        <span className="ml-1 bg-red-500 text-white px-2 py-0.5 rounded text-xs font-bold">
+                          FLAGGED
+                        </span>
+                      )}
+                    </span>
                   </div>
                 )}
 
