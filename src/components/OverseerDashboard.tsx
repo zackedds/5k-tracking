@@ -6,6 +6,7 @@ import { useRace, startRace, finishRace, updateDedupWindow } from "@/hooks/useRa
 import { formatTime } from "@/lib/timeFormat";
 import { exportResultsCSV, downloadCSV } from "@/lib/csvExport";
 import RaceClock from "./RaceClock";
+import ResultsDashboard from "./ResultsDashboard";
 
 interface OverseerDashboardProps {
   raceId: string;
@@ -24,6 +25,7 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
   const [editBib, setEditBib] = useState("");
   const [showAddEntry, setShowAddEntry] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showResults, setShowResults] = useState(false);
   const [newBib, setNewBib] = useState("");
   const [newTime, setNewTime] = useState("");
   const [dedupInput, setDedupInput] = useState("");
@@ -168,6 +170,18 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
     );
   }
 
+  if (showResults) {
+    return (
+      <ResultsDashboard
+        entries={entries}
+        totalLaps={totalLaps}
+        raceName={race.name}
+        lapCounts={lapCounts}
+        onBack={() => setShowResults(false)}
+      />
+    );
+  }
+
   return (
     <div className="h-dvh flex flex-col bg-gray-100">
       {!isOnline && (
@@ -211,6 +225,12 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
                 End Race
               </button>
             )}
+            <button
+              onClick={() => setShowResults(true)}
+              className="bg-green-600 text-white px-4 py-2 rounded-xl font-bold shadow"
+            >
+              Results
+            </button>
             <button
               onClick={handleExport}
               className="bg-blue-600 text-white px-4 py-2 rounded-xl font-bold shadow"
