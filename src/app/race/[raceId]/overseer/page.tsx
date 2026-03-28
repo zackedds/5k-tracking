@@ -17,8 +17,20 @@ function OverseerPageInner() {
     const urlPin = searchParams.get("pin");
     if (urlPin && race && urlPin === race.overseerPin) {
       setAuthenticated(true);
+      // Save session for rejoin — stores PIN so overseer can get back in
+      localStorage.setItem(
+        "activeSession",
+        JSON.stringify({
+          raceId,
+          raceName: race.name,
+          roomCode: race.roomCode,
+          role: "overseer",
+          pin: urlPin,
+          savedAt: Date.now(),
+        })
+      );
     }
-  }, [searchParams, race]);
+  }, [searchParams, race, raceId]);
 
   if (!race) {
     return (
@@ -42,6 +54,17 @@ function OverseerPageInner() {
               if (e.key === "Enter") {
                 if (pinInput === race.overseerPin) {
                   setAuthenticated(true);
+                  localStorage.setItem(
+                    "activeSession",
+                    JSON.stringify({
+                      raceId,
+                      raceName: race.name,
+                      roomCode: race.roomCode,
+                      role: "overseer",
+                      pin: pinInput,
+                      savedAt: Date.now(),
+                    })
+                  );
                 } else {
                   setError("Wrong PIN");
                 }
@@ -55,6 +78,17 @@ function OverseerPageInner() {
             onClick={() => {
               if (pinInput === race.overseerPin) {
                 setAuthenticated(true);
+                localStorage.setItem(
+                  "activeSession",
+                  JSON.stringify({
+                    raceId,
+                    raceName: race.name,
+                    roomCode: race.roomCode,
+                    role: "overseer",
+                    pin: pinInput,
+                    savedAt: Date.now(),
+                  })
+                );
               } else {
                 setError("Wrong PIN");
               }

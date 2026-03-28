@@ -25,6 +25,22 @@ function TimerPageInner() {
     setTimerId(id);
   }, [searchParams, raceId]);
 
+  // Keep session saved with actual race name for rejoin
+  useEffect(() => {
+    if (!race || !timerName) return;
+    localStorage.setItem(
+      "activeSession",
+      JSON.stringify({
+        raceId,
+        raceName: race.name,
+        roomCode: race.roomCode,
+        role: "timer",
+        timerName,
+        savedAt: Date.now(),
+      })
+    );
+  }, [race, raceId, timerName]);
+
   if (!race) {
     return (
       <div className="flex items-center justify-center h-dvh">
