@@ -2,7 +2,7 @@
 import { useState, useMemo } from "react";
 import { useRaceClock } from "@/hooks/useRaceClock";
 import { useEntries } from "@/hooks/useEntries";
-import { useRace, startRace, finishRace } from "@/hooks/useRace";
+import { useRace, startRace, finishRace, updateDedupWindow } from "@/hooks/useRace";
 import { formatTime } from "@/lib/timeFormat";
 import { exportResultsCSV, downloadCSV } from "@/lib/csvExport";
 import RaceClock from "./RaceClock";
@@ -14,17 +14,22 @@ interface OverseerDashboardProps {
 export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
   const race = useRace(raceId);
   const { elapsed, isRunning } = useRaceClock(raceId);
-  const { entries, updateEntry, deleteEntry, isOnline, addEntry, lapCounts } = useEntries(raceId);
-  const [filter, setFilter] = useState<"all" | "unassigned" | "finished" | "in-progress" | "flagged">("all");
+  const dedupSeconds = race?.dedupWindowSeconds || 60;
+  const { entries, updateEntry, deleteEntry, isOnline, addEntry, lapCounts } =
+    useEntries(raceId, dedupSeconds);
+  const [filter, setFilter] = useState<
+    "all" | "unassigned" | "finished" | "in-progress" | "flagged" | "duplicates"
+  >("all");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBib, setEditBib] = useState("");
   const [showAddEntry, setShowAddEntry] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [newBib, setNewBib] = useState("");
   const [newTime, setNewTime] = useState("");
+  const [dedupInput, setDedupInput] = useState("");
 
   const totalLaps = race?.totalLaps || 1;
 
-  // Runners who have completed all laps
   const finishedBibs = useMemo(() => {
     return new Set(
       Object.entries(lapCounts)
@@ -33,7 +38,6 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
     );
   }, [lapCounts, totalLaps]);
 
-  // Runners in progress (at least 1 lap but not done)
   const inProgressBibs = useMemo(() => {
     return new Set(
       Object.entries(lapCounts)
@@ -42,44 +46,40 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
     );
   }, [lapCounts, totalLaps]);
 
-  // Flagged entries
   const flaggedCount = useMemo(
     () => entries.filter((e) => e.status === "disputed").length,
     [entries]
   );
 
-  // Bibs with more laps than expected (over-logged)
-  const overLoggedBibs = useMemo(() => {
-    return new Set(
-      Object.entries(lapCounts)
-        .filter(([, count]) => count > totalLaps)
-        .map(([bib]) => parseInt(bib))
-    );
-  }, [lapCounts, totalLaps]);
-
-  // Bibs with no laps logged at all
-  const loggedBibs = useMemo(
-    () => new Set(entries.filter((e) => e.bibNumber !== null).map((e) => e.bibNumber!)),
+  const duplicateCount = useMemo(
+    () => entries.filter((e) => e.isDuplicate).length,
     [entries]
-  );
-  const missingBibs = useMemo(
-    () => (race?.bibs || []).filter((b) => !loggedBibs.has(b)),
-    [race?.bibs, loggedBibs]
   );
 
   const unassignedCount = entries.filter((e) => e.bibNumber === null).length;
 
-  // Filtered entries
+  // Unique timer names connected
+  const activeTimers = useMemo(() => {
+    const names = new Set(entries.map((e) => e.timerName));
+    return [...names];
+  }, [entries]);
+
   const filteredEntries = useMemo(() => {
     switch (filter) {
       case "unassigned":
         return entries.filter((e) => e.bibNumber === null);
       case "finished":
-        return entries.filter((e) => e.bibNumber !== null && e.lap === totalLaps);
+        return entries.filter(
+          (e) => e.bibNumber !== null && !e.isDuplicate && e.lap === totalLaps
+        );
       case "in-progress":
-        return entries.filter((e) => e.bibNumber !== null && inProgressBibs.has(e.bibNumber));
+        return entries.filter(
+          (e) => e.bibNumber !== null && !e.isDuplicate && inProgressBibs.has(e.bibNumber)
+        );
       case "flagged":
         return entries.filter((e) => e.status === "disputed");
+      case "duplicates":
+        return entries.filter((e) => e.isDuplicate);
       default:
         return entries;
     }
@@ -98,17 +98,9 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
   };
 
   const handleExport = () => {
-    // Warn about issues before export
     const warnings: string[] = [];
-    if (unassignedCount > 0) {
-      warnings.push(`${unassignedCount} entries have no bib assigned`);
-    }
-    if (flaggedCount > 0) {
-      warnings.push(`${flaggedCount} entries are flagged for review`);
-    }
-    if (overLoggedBibs.size > 0) {
-      warnings.push(`${overLoggedBibs.size} bibs have more laps than expected`);
-    }
+    if (unassignedCount > 0) warnings.push(`${unassignedCount} entries have no bib assigned`);
+    if (flaggedCount > 0) warnings.push(`${flaggedCount} entries are flagged for review`);
 
     if (warnings.length > 0) {
       const proceed = confirm(
@@ -160,15 +152,20 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
     updateEntry(entryId, { status: "confirmed" });
   };
 
-  if (!race) {
-    return <div className="flex items-center justify-center h-dvh text-gray-500">Loading race...</div>;
-  }
+  const handleSaveDedup = async () => {
+    const val = parseInt(dedupInput);
+    if (!isNaN(val) && val >= 0) {
+      await updateDedupWindow(raceId, val);
+      setShowSettings(false);
+    }
+  };
 
-  const timerColors: Record<string, string> = {};
-  if (race.timers) {
-    Object.entries(race.timers).forEach(([id, t]) => {
-      timerColors[id] = t.color;
-    });
+  if (!race) {
+    return (
+      <div className="flex items-center justify-center h-dvh text-gray-500">
+        Loading race...
+      </div>
+    );
   }
 
   return (
@@ -181,7 +178,7 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
 
       <RaceClock elapsed={elapsed} isRunning={isRunning} />
 
-      {/* Header Controls */}
+      {/* Header */}
       <div className="bg-white border-b px-4 py-3">
         <div className="flex items-center justify-between mb-2">
           <div>
@@ -189,7 +186,13 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
             <div className="text-sm text-gray-500">
               Room: <span className="font-mono font-bold">{race.roomCode}</span>
               {" "}&bull; {totalLaps} lap{totalLaps > 1 ? "s" : ""}
+              {" "}&bull; Dedup: {dedupSeconds}s
             </div>
+            {activeTimers.length > 0 && (
+              <div className="text-xs text-gray-400 mt-1">
+                Timers: {activeTimers.join(", ")}
+              </div>
+            )}
           </div>
           <div className="flex gap-2">
             {race.status === "setup" && (
@@ -214,8 +217,44 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
             >
               CSV
             </button>
+            <button
+              onClick={() => {
+                setShowSettings(!showSettings);
+                setDedupInput(dedupSeconds.toString());
+              }}
+              className="bg-gray-300 text-gray-700 px-3 py-2 rounded-xl font-bold"
+            >
+              Settings
+            </button>
           </div>
         </div>
+
+        {/* Settings panel */}
+        {showSettings && (
+          <div className="bg-gray-50 rounded-xl p-3 mb-2 border">
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-bold text-gray-600 whitespace-nowrap">
+                Dedup window (seconds):
+              </label>
+              <input
+                type="number"
+                inputMode="numeric"
+                value={dedupInput}
+                onChange={(e) => setDedupInput(e.target.value)}
+                className="w-20 h-8 text-center border-2 rounded-lg font-mono font-bold"
+              />
+              <button
+                onClick={handleSaveDedup}
+                className="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm font-bold"
+              >
+                Save
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-1">
+              Same bib logged within this window = auto-flagged as duplicate
+            </p>
+          </div>
+        )}
 
         {/* Stats Row */}
         <div className="flex gap-2 text-sm flex-wrap">
@@ -228,42 +267,42 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
           <div className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-lg font-bold">
             {unassignedCount} unassigned
           </div>
+          {duplicateCount > 0 && (
+            <div className="bg-gray-200 text-gray-600 px-3 py-1 rounded-lg font-bold">
+              {duplicateCount} dups
+            </div>
+          )}
           {flaggedCount > 0 && (
             <div className="bg-red-100 text-red-800 px-3 py-1 rounded-lg font-bold">
               {flaggedCount} flagged
             </div>
           )}
-          {overLoggedBibs.size > 0 && (
-            <div className="bg-red-100 text-red-800 px-3 py-1 rounded-lg font-bold">
-              {overLoggedBibs.size} over-logged
-            </div>
-          )}
-          <div className="bg-gray-200 text-gray-700 px-3 py-1 rounded-lg font-bold">
-            {missingBibs.length} not seen
-          </div>
         </div>
       </div>
 
       {/* Filter Tabs */}
       <div className="flex bg-white border-b px-4 py-2 gap-2 overflow-x-auto">
-        {(["all", "finished", "in-progress", "unassigned", "flagged"] as const).map((f) => {
+        {(
+          ["all", "finished", "in-progress", "unassigned", "duplicates", "flagged"] as const
+        ).map((f) => {
           const labels: Record<string, string> = {
             all: "All",
             finished: "Finished",
             "in-progress": "In Progress",
             unassigned: "Unassigned",
+            duplicates: `Dups (${duplicateCount})`,
             flagged: `Flagged (${flaggedCount})`,
           };
-          // Hide flagged tab if none
           if (f === "flagged" && flaggedCount === 0) return null;
+          if (f === "duplicates" && duplicateCount === 0) return null;
           return (
             <button
               key={f}
               onClick={() => setFilter(f)}
               className={`px-3 py-1 rounded-lg text-sm font-bold whitespace-nowrap ${
                 filter === f
-                  ? f === "flagged" ? "bg-red-600 text-white" : "bg-gray-800 text-white"
-                  : f === "flagged" ? "bg-red-100 text-red-700" : "bg-gray-200 text-gray-600"
+                  ? "bg-gray-800 text-white"
+                  : "bg-gray-200 text-gray-600"
               }`}
             >
               {labels[f]}
@@ -305,46 +344,23 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
         </div>
       )}
 
-      {/* Missing Bibs Collapsible */}
-      {filter === "all" && missingBibs.length > 0 && (
-        <details className="bg-gray-50 border-b px-4 py-2">
-          <summary className="text-sm font-bold text-gray-600 cursor-pointer">
-            Not seen yet ({missingBibs.length})
-          </summary>
-          <div className="flex flex-wrap gap-1 mt-2">
-            {missingBibs.map((b) => (
-              <span key={b} className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded text-xs font-mono">
-                {b}
-              </span>
-            ))}
-          </div>
-        </details>
-      )}
-
       {/* Entry List */}
       <div className="flex-1 overflow-y-auto px-3 py-2">
         <div className="flex flex-col gap-1">
           {filteredEntries.map((entry) => {
-            const isFinalLap = entry.bibNumber !== null && entry.lap === totalLaps;
+            const isFinalLap =
+              entry.bibNumber !== null && !entry.isDuplicate && entry.lap === totalLaps;
             const isFlagged = entry.status === "disputed";
-            const isOverLogged = entry.bibNumber !== null && overLoggedBibs.has(entry.bibNumber);
-            const colorMap: Record<string, string> = {
-              red: "border-l-red-500",
-              blue: "border-l-blue-500",
-              green: "border-l-green-500",
-            };
-            const timerColor = timerColors[entry.timerId] || "";
+            const isDuplicate = entry.isDuplicate;
 
             return (
               <div
                 key={entry.id}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-l-4 ${
-                  colorMap[timerColor] || "border-l-gray-400"
-                } ${
-                  isFlagged
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 ${
+                  isDuplicate
+                    ? "border-gray-300 bg-gray-100 opacity-50"
+                    : isFlagged
                     ? "border-red-400 bg-red-50"
-                    : isOverLogged
-                    ? "border-orange-400 bg-orange-50"
                     : isFinalLap
                     ? "border-green-400 bg-green-50"
                     : entry.bibNumber === null
@@ -389,24 +405,34 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
                     }}
                   >
                     {entry.bibNumber !== null ? (
-                      <span>
+                      <span
+                        className={
+                          isDuplicate
+                            ? "text-gray-400 line-through"
+                            : isFlagged
+                            ? "text-red-700"
+                            : ""
+                        }
+                      >
                         Bib #{entry.bibNumber}
-                        <span className="text-sm ml-1 font-normal text-gray-500">
-                          L{entry.lap}/{totalLaps}
-                        </span>
+                        {!isDuplicate && (
+                          <span className="text-sm ml-1 font-normal text-gray-500">
+                            L{entry.lap}/{totalLaps}
+                          </span>
+                        )}
                         {isFinalLap && (
                           <span className="ml-1 bg-green-500 text-white px-2 py-0.5 rounded text-xs font-bold">
                             DONE
                           </span>
                         )}
-                        {isFlagged && (
-                          <span className="ml-1 bg-red-500 text-white px-2 py-0.5 rounded text-xs font-bold">
-                            FLAGGED
+                        {isDuplicate && (
+                          <span className="ml-1 bg-gray-400 text-white px-2 py-0.5 rounded text-xs font-bold no-underline">
+                            DUP
                           </span>
                         )}
-                        {isOverLogged && !isFlagged && (
-                          <span className="ml-1 bg-orange-500 text-white px-2 py-0.5 rounded text-xs font-bold">
-                            EXTRA LAP
+                        {isFlagged && !isDuplicate && (
+                          <span className="ml-1 bg-red-500 text-white px-2 py-0.5 rounded text-xs font-bold">
+                            FLAGGED
                           </span>
                         )}
                       </span>
@@ -416,7 +442,9 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
                   </div>
                 )}
 
-                <div className="text-xs text-gray-400 min-w-[48px] text-right">{entry.timerName}</div>
+                <div className="text-xs text-gray-400 min-w-[48px] text-right">
+                  {entry.timerName}
+                </div>
 
                 <div className="flex gap-1">
                   {isFlagged && (

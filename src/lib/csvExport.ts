@@ -6,9 +6,9 @@ import { formatTime } from "./timeFormat";
  * The finish time is their final lap entry time.
  */
 export function exportResultsCSV(entries: Entry[], totalLaps: number = 1): string {
-  // Only include entries that represent the final lap
+  // Only include non-duplicate entries that represent the final lap
   const finishEntries = entries
-    .filter((e) => e.bibNumber !== null && e.lap === totalLaps)
+    .filter((e) => e.bibNumber !== null && !e.isDuplicate && e.lap === totalLaps)
     .sort((a, b) => a.finishTime - b.finishTime);
 
   const rows = finishEntries.map((entry, i) => ({

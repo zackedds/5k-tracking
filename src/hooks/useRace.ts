@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { ref, onValue, set, update, get, push } from "firebase/database";
-import { Race, TimerConfig } from "@/lib/types";
+import { Race } from "@/lib/types";
 
 export function useRace(raceId: string | null) {
   const [race, setRace] = useState<Race | null>(null);
@@ -37,16 +37,9 @@ export async function createRace(
   name: string,
   overseerPin: string,
   totalLaps: number,
-  timers: Record<string, TimerConfig>
+  dedupWindowSeconds: number = 60
 ): Promise<string> {
   const roomCode = generateRoomCode();
-
-  const bibs: number[] = [];
-  Object.values(timers).forEach((t) => {
-    for (let i = t.bibRangeStart; i <= t.bibRangeEnd; i++) {
-      bibs.push(i);
-    }
-  });
 
   const racesRef = ref(db, "races");
   const newRaceRef = push(racesRef);
@@ -60,8 +53,7 @@ export async function createRace(
     roomCode,
     overseerPin,
     totalLaps,
-    bibs,
-    timers,
+    dedupWindowSeconds,
   };
 
   await set(newRaceRef, race);
@@ -85,5 +77,11 @@ export async function startRace(raceId: string) {
 export async function finishRace(raceId: string) {
   await update(ref(db, `races/${raceId}`), {
     status: "finished",
+  });
+}
+
+export async function updateDedupWindow(raceId: string, seconds: number) {
+  await update(ref(db, `races/${raceId}`), {
+    dedupWindowSeconds: seconds,
   });
 }

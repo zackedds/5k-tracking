@@ -2,7 +2,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createRace, lookupRoomCode } from "@/hooks/useRace";
-import { TimerConfig } from "@/lib/types";
 
 export default function Home() {
   const [tab, setTab] = useState<"join" | "create">("join");
@@ -103,7 +102,7 @@ function CreateForm() {
   const router = useRouter();
   const [raceName, setRaceName] = useState("");
   const [pin, setPin] = useState("");
-  const [totalLaps, setTotalLaps] = useState("1");
+  const [totalLaps, setTotalLaps] = useState("6");
   const [loading, setLoading] = useState(false);
 
   const handleCreate = async () => {
@@ -112,17 +111,11 @@ function CreateForm() {
 
     const laps = parseInt(totalLaps) || 1;
 
-    const timers: Record<string, TimerConfig> = {
-      timer1: { name: "Timer 1", bibRangeStart: 100, bibRangeEnd: 399, color: "red" },
-      timer2: { name: "Timer 2", bibRangeStart: 400, bibRangeEnd: 699, color: "blue" },
-      timer3: { name: "Timer 3", bibRangeStart: 700, bibRangeEnd: 999, color: "green" },
-    };
-
     try {
-      const raceId = await createRace(raceName, pin, laps, timers);
+      const raceId = await createRace(raceName, pin, laps);
       router.push(`/race/${raceId}/overseer?pin=${encodeURIComponent(pin)}`);
     } catch {
-      alert("Failed to create race. Check your Firebase config.");
+      alert("Failed to create race. Check your connection.");
       setLoading(false);
     }
   };
@@ -166,12 +159,7 @@ function CreateForm() {
       </div>
 
       <div className="bg-gray-100 rounded-xl p-4 text-sm text-gray-600">
-        <div className="font-bold mb-2">Default Timer Assignments:</div>
-        <div className="flex flex-col gap-1">
-          <div><span className="inline-block w-3 h-3 bg-red-500 rounded mr-2" />Timer 1: Bibs 100-399</div>
-          <div><span className="inline-block w-3 h-3 bg-blue-500 rounded mr-2" />Timer 2: Bibs 400-699</div>
-          <div><span className="inline-block w-3 h-3 bg-green-500 rounded mr-2" />Timer 3: Bibs 700-999</div>
-        </div>
+        Share the room code with your volunteers. Anyone with the code can join as a timer — no setup needed.
       </div>
 
       <button

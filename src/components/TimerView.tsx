@@ -1,9 +1,8 @@
 "use client";
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { useRaceClock } from "@/hooks/useRaceClock";
 import { useEntries } from "@/hooks/useEntries";
-import { useRace } from "@/hooks/useRace";
-import { TimerMode, TimerConfig } from "@/lib/types";
+import { TimerMode } from "@/lib/types";
 import RaceClock from "./RaceClock";
 import EntryList from "./EntryList";
 import QuickCapture from "./QuickCapture";
@@ -11,23 +10,37 @@ import QuickCapture from "./QuickCapture";
 interface TimerViewProps {
   raceId: string;
   timerId: string;
-  timerConfig: TimerConfig;
+  timerName: string;
+  totalLaps: number;
+  dedupWindowSeconds: number;
 }
 
-export default function TimerView({ raceId, timerId, timerConfig }: TimerViewProps) {
-  const race = useRace(raceId);
+export default function TimerView({
+  raceId,
+  timerId,
+  timerName,
+  totalLaps,
+  dedupWindowSeconds,
+}: TimerViewProps) {
   const { elapsed, isRunning, getServerNow, startTime } = useRaceClock(raceId);
-  const { myEntries, entries, addEntry, updateEntry, deleteEntry, isOnline, lapCounts } = useEntries(raceId, timerId);
+  const { entries, addEntry, updateEntry, deleteEntry, isOnline, lapCounts } =
+    useEntries(raceId, dedupWindowSeconds);
   const [mode, setMode] = useState<TimerMode>("normal");
   const [bibInput, setBibInput] = useState("");
   const [logFlash, setLogFlash] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
-  const [recentlyDeleted, setRecentlyDeleted] = useState<{ id: string; timeout: ReturnType<typeof setTimeout> } | null>(null);
+  const [recentlyDeleted, setRecentlyDeleted] = useState<{
+    id: string;
+    timeout: ReturnType<typeof setTimeout>;
+  } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const warningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const totalLaps = race?.totalLaps || 1;
+  const myEntries = useMemo(
+    () => entries.filter((e) => e.timerId === timerId),
+    [entries, timerId]
+  );
 
   const vibrate = (ms: number) => {
     if (typeof navigator !== "undefined" && navigator.vibrate) {
@@ -56,7 +69,7 @@ export default function TimerView({ raceId, timerId, timerConfig }: TimerViewPro
       addEntry({
         raceId,
         timerId,
-        timerName: timerConfig.name,
+        timerName,
         bibNumber,
         lap: 0,
         finishTime,
@@ -66,14 +79,13 @@ export default function TimerView({ raceId, timerId, timerConfig }: TimerViewPro
 
       vibrate(50);
     },
-    [isRunning, startTime, getServerNow, addEntry, raceId, timerId, timerConfig.name]
+    [isRunning, startTime, getServerNow, addEntry, raceId, timerId, timerName]
   );
 
   const handleNormalLog = () => {
     const bib = parseInt(bibInput);
     if (isNaN(bib) || bib <= 0) return;
 
-    // Check: already finished all laps?
     const currentLaps = lapCounts[bib] || 0;
     if (currentLaps >= totalLaps) {
       showWarning(`Bib #${bib} already finished all ${totalLaps} laps! Logging anyway.`);
@@ -91,21 +103,20 @@ export default function TimerView({ raceId, timerId, timerConfig }: TimerViewPro
   };
 
   const handleAssignBib = (entryId: string, bib: number) => {
-    // Check: is this bib already at or past total laps (across ALL entries, not just mine)?
     const globalLaps = lapCounts[bib] || 0;
     if (globalLaps >= totalLaps) {
-      showWarning(`Bib #${bib} already has ${globalLaps}/${totalLaps} laps. Assigning anyway — check for errors.`);
+      showWarning(
+        `Bib #${bib} already has ${globalLaps}/${totalLaps} laps. Assigning anyway — check for errors.`
+      );
       vibrate(200);
     }
     updateEntry(entryId, { bibNumber: bib });
   };
 
   const handleDelete = (entryId: string) => {
-    // Soft delete with undo: hide entry, delete after 5s
-    // Clear any previous pending delete
     if (recentlyDeleted) {
       clearTimeout(recentlyDeleted.timeout);
-      deleteEntry(recentlyDeleted.id); // commit the previous one
+      deleteEntry(recentlyDeleted.id);
     }
 
     const timeout = setTimeout(() => {
@@ -134,14 +145,12 @@ export default function TimerView({ raceId, timerId, timerConfig }: TimerViewPro
 
   const unassignedCount = myEntries.filter((e) => e.bibNumber === null).length;
 
-  // Filter out the soft-deleted entry from display
   const visibleEntries = recentlyDeleted
     ? myEntries.filter((e) => e.id !== recentlyDeleted.id)
     : myEntries;
 
-  // Show lap info for the bib currently being typed
   const previewBib = parseInt(bibInput);
-  const previewLaps = !isNaN(previewBib) ? (lapCounts[previewBib] || 0) : null;
+  const previewLaps = !isNaN(previewBib) ? lapCounts[previewBib] || 0 : null;
 
   if (mode === "quickCapture") {
     return (
@@ -151,7 +160,7 @@ export default function TimerView({ raceId, timerId, timerConfig }: TimerViewPro
             OFFLINE — entries will sync when connected
           </div>
         )}
-        <RaceClock elapsed={elapsed} isRunning={isRunning} color={timerConfig.color} />
+        <RaceClock elapsed={elapsed} isRunning={isRunning} />
         <QuickCapture
           onCapture={handleQuickCapture}
           captureCount={myEntries.length}
@@ -175,14 +184,15 @@ export default function TimerView({ raceId, timerId, timerConfig }: TimerViewPro
   }
 
   return (
-    <div className={`h-dvh flex flex-col transition-colors ${logFlash ? "bg-green-100" : "bg-gray-50"}`}>
+    <div
+      className={`h-dvh flex flex-col transition-colors ${logFlash ? "bg-green-100" : "bg-gray-50"}`}
+    >
       {!isOnline && (
         <div className="bg-yellow-500 text-yellow-900 text-center py-2 font-bold text-sm">
           OFFLINE — entries will sync when connected
         </div>
       )}
 
-      {/* Warning/Undo banner */}
       {warning && (
         <div className="bg-amber-100 border-b border-amber-300 text-amber-900 text-center py-2 px-4 font-bold text-sm flex items-center justify-center gap-3">
           <span>{warning}</span>
@@ -197,7 +207,7 @@ export default function TimerView({ raceId, timerId, timerConfig }: TimerViewPro
         </div>
       )}
 
-      <RaceClock elapsed={elapsed} isRunning={isRunning} color={timerConfig.color} />
+      <RaceClock elapsed={elapsed} isRunning={isRunning} />
 
       {/* Quick Capture Toggle */}
       <div className="px-3 pt-3">
@@ -239,11 +249,12 @@ export default function TimerView({ raceId, timerId, timerConfig }: TimerViewPro
             LOG
           </button>
         </div>
-        {/* Lap preview for the bib being typed */}
         {previewLaps !== null && previewLaps > 0 && (
-          <div className={`text-center mt-2 font-bold text-sm ${
-            previewLaps >= totalLaps ? "text-red-600" : "text-blue-600"
-          }`}>
+          <div
+            className={`text-center mt-2 font-bold text-sm ${
+              previewLaps >= totalLaps ? "text-red-600" : "text-blue-600"
+            }`}
+          >
             Bib #{previewBib}: {previewLaps}/{totalLaps} laps
             {previewLaps >= totalLaps && " — ALREADY FINISHED"}
           </div>
@@ -269,8 +280,6 @@ export default function TimerView({ raceId, timerId, timerConfig }: TimerViewPro
         </div>
         <EntryList
           entries={visibleEntries}
-          bibRangeStart={timerConfig.bibRangeStart}
-          bibRangeEnd={timerConfig.bibRangeEnd}
           onAssignBib={handleAssignBib}
           onDelete={handleDelete}
           onFlag={handleFlag}

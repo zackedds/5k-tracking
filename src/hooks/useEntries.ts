@@ -4,28 +4,51 @@ import { db } from "@/lib/firebase";
 import { ref, onValue, push, set, update, remove } from "firebase/database";
 import { Entry } from "@/lib/types";
 
-/** Compute lap numbers for all entries based on bib and time order */
-function computeLaps(entries: Entry[]): Entry[] {
-  const bibLapCount: Record<number, number> = {};
-  return entries.map((e) => {
-    if (e.bibNumber === null) return { ...e, lap: 0 };
-    bibLapCount[e.bibNumber] = (bibLapCount[e.bibNumber] || 0) + 1;
-    return { ...e, lap: bibLapCount[e.bibNumber] };
+/**
+ * Compute laps and flag duplicates.
+ *
+ * For each bib, entries are in time order. If two entries for the same bib
+ * are within `dedupWindowMs`, the later one is flagged as a duplicate and
+ * doesn't count as a new lap.
+ */
+function processEntries(rawEntries: Entry[], dedupWindowMs: number): Entry[] {
+  // Track last valid (non-duplicate) finish time per bib
+  const lastValidTime: Record<number, number> = {};
+  const lapCount: Record<number, number> = {};
+
+  return rawEntries.map((e) => {
+    if (e.bibNumber === null) {
+      return { ...e, lap: 0, isDuplicate: false };
+    }
+
+    const bib = e.bibNumber;
+    const prevTime = lastValidTime[bib];
+    const isDuplicate =
+      prevTime !== undefined && (e.finishTime - prevTime) < dedupWindowMs;
+
+    if (isDuplicate) {
+      return { ...e, lap: lapCount[bib] || 0, isDuplicate: true };
+    }
+
+    // Valid entry — new lap
+    lapCount[bib] = (lapCount[bib] || 0) + 1;
+    lastValidTime[bib] = e.finishTime;
+    return { ...e, lap: lapCount[bib], isDuplicate: false };
   });
 }
 
-/** Get lap counts per bib: { bibNumber: currentLapCount } */
+/** Get lap counts per bib (excluding duplicates) */
 export function getLapCounts(entries: Entry[]): Record<number, number> {
   const counts: Record<number, number> = {};
   entries.forEach((e) => {
-    if (e.bibNumber !== null) {
+    if (e.bibNumber !== null && !e.isDuplicate) {
       counts[e.bibNumber] = (counts[e.bibNumber] || 0) + 1;
     }
   });
   return counts;
 }
 
-export function useEntries(raceId: string | null, timerId?: string) {
+export function useEntries(raceId: string | null, dedupWindowSeconds: number = 60) {
   const [rawEntries, setRawEntries] = useState<Entry[]>([]);
   const [isOnline, setIsOnline] = useState(true);
 
@@ -56,11 +79,14 @@ export function useEntries(raceId: string | null, timerId?: string) {
     return () => unsub();
   }, [raceId]);
 
-  // Entries with computed lap numbers
-  const entries = useMemo(() => computeLaps(rawEntries), [rawEntries]);
+  const dedupWindowMs = dedupWindowSeconds * 1000;
+  const entries = useMemo(
+    () => processEntries(rawEntries, dedupWindowMs),
+    [rawEntries, dedupWindowMs]
+  );
 
   const addEntry = useCallback(
-    (entry: Omit<Entry, "id">) => {
+    (entry: Omit<Entry, "id" | "isDuplicate">) => {
       if (!raceId) return;
       const entriesRef = ref(db, `entries/${raceId}`);
       const newRef = push(entriesRef);
@@ -87,15 +113,11 @@ export function useEntries(raceId: string | null, timerId?: string) {
     [raceId]
   );
 
-  const myEntries = timerId
-    ? entries.filter((e) => e.timerId === timerId)
-    : entries;
-
   const lapCounts = useMemo(() => getLapCounts(entries), [entries]);
 
+  // Filter by timerId is now done at component level, not here
   return {
     entries,
-    myEntries,
     addEntry,
     updateEntry,
     deleteEntry,
