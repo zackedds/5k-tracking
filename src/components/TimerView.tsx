@@ -148,13 +148,13 @@ export default function TimerView({
       className={`h-dvh flex flex-col transition-colors ${logFlash ? "bg-green-100" : "bg-gray-50"}`}
     >
       {!isOnline && (
-        <div className="bg-yellow-500 text-yellow-900 text-center py-2 font-bold text-sm shrink-0">
+        <div className="bg-yellow-500 text-yellow-900 text-center py-2 font-bold text-sm">
           OFFLINE — entries will sync when connected
         </div>
       )}
 
       {warning && (
-        <div className="bg-amber-100 border-b border-amber-300 text-amber-900 text-center py-2 px-4 font-bold text-sm flex items-center justify-center gap-3 shrink-0">
+        <div className="bg-amber-100 border-b border-amber-300 text-amber-900 text-center py-2 px-4 font-bold text-sm flex items-center justify-center gap-3">
           <span>{warning}</span>
           {recentlyDeleted && (
             <button
@@ -167,29 +167,10 @@ export default function TimerView({
         </div>
       )}
 
-      <div className="shrink-0">
-        <RaceClock elapsed={elapsed} isRunning={isRunning} />
-      </div>
+      <RaceClock elapsed={elapsed} isRunning={isRunning} />
 
-      {/* Entry List — scrollable middle, takes remaining space */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="font-bold text-gray-600 text-sm uppercase">
-            {visibleEntries.length} entries — {totalLaps} lap race
-          </h3>
-        </div>
-        <EntryList
-          entries={visibleEntries}
-          onEditBib={handleAssignBib}
-          onDelete={handleDelete}
-          onFlag={handleFlag}
-          totalLaps={totalLaps}
-          lapCounts={lapCounts}
-        />
-      </div>
-
-      {/* Bib Entry — stays at bottom, flex shrink-0 */}
-      <div className="shrink-0 border-t bg-white px-3 py-2">
+      {/* Bib Entry — right under clock, always visible */}
+      <div className="bg-white border-b px-3 py-2">
         {previewLaps !== null && previewLaps > 0 && (
           <div
             className={`text-center mb-1 font-bold text-xs ${
@@ -217,17 +198,34 @@ export default function TimerView({
               if (e.key === "Enter") handleLog();
             }}
             placeholder="Bib #"
-            className="w-28 h-14 text-center text-2xl font-bold border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none"
+            className="w-24 h-12 text-center text-2xl font-bold border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none"
             disabled={!isRunning}
           />
           <button
             onClick={handleLog}
             disabled={!isRunning || !bibInput}
-            className="flex-1 h-14 bg-green-600 text-white text-2xl font-bold rounded-xl disabled:bg-gray-300 disabled:text-gray-500 shadow-lg active:scale-95 transition-transform"
+            className="flex-1 h-12 bg-green-600 text-white text-xl font-bold rounded-xl disabled:bg-gray-300 disabled:text-gray-500 shadow-lg active:scale-95 transition-transform"
           >
             LOG
           </button>
         </div>
+      </div>
+
+      {/* Entry List — scrollable, keyboard covers this and that's fine */}
+      <div className="flex-1 overflow-y-auto px-3 py-2">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="font-bold text-gray-600 text-sm uppercase">
+            {visibleEntries.length} entries — {totalLaps} lap race
+          </h3>
+        </div>
+        <EntryList
+          entries={visibleEntries}
+          onEditBib={handleAssignBib}
+          onDelete={handleDelete}
+          onFlag={handleFlag}
+          totalLaps={totalLaps}
+          lapCounts={lapCounts}
+        />
       </div>
     </div>
   );
