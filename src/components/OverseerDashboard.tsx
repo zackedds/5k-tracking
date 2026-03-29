@@ -367,7 +367,7 @@ export default function OverseerDashboard({ raceId }: OverseerDashboardProps) {
 
       {/* Entry List */}
       <div className="flex-1 overflow-y-auto">
-        {filteredEntries.map((entry) => {
+        {[...filteredEntries].reverse().map((entry) => {
           const isFinalLap = !entry.isDuplicate && entry.lap === totalLaps;
           const isFlagged = entry.status === "disputed";
           const isDuplicate = entry.isDuplicate;

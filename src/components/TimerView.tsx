@@ -169,9 +169,41 @@ export default function TimerView({
 
       <RaceClock elapsed={elapsed} isRunning={isRunning} />
 
-      {/* Bib Entry */}
-      <div className="p-3">
-        <div className="flex gap-2">
+      {/* Entry List — takes up available space */}
+      <div className="flex-1 overflow-y-auto px-3 py-2">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="font-bold text-gray-600 text-sm uppercase">
+            {visibleEntries.length} entries — {totalLaps} lap race
+          </h3>
+        </div>
+        <EntryList
+          entries={visibleEntries}
+          onEditBib={handleAssignBib}
+          onDelete={handleDelete}
+          onFlag={handleFlag}
+          totalLaps={totalLaps}
+          lapCounts={lapCounts}
+        />
+      </div>
+
+      {/* Bib Entry — pinned to bottom, right above keyboard */}
+      <div className="border-t bg-white px-3 py-2 pb-[env(safe-area-inset-bottom)]">
+        {previewLaps !== null && previewLaps > 0 && (
+          <div
+            className={`text-center mb-1 font-bold text-xs ${
+              previewLaps >= totalLaps ? "text-red-600" : "text-blue-600"
+            }`}
+          >
+            Bib #{previewBib}: {previewLaps}/{totalLaps} laps
+            {previewLaps >= totalLaps && " — ALREADY FINISHED"}
+          </div>
+        )}
+        {!isRunning && (
+          <div className="text-center text-gray-500 mb-1 text-xs">
+            Waiting for race to start...
+          </div>
+        )}
+        <div className="flex gap-2 items-center">
           <input
             ref={inputRef}
             type="number"
@@ -183,49 +215,17 @@ export default function TimerView({
               if (e.key === "Enter") handleLog();
             }}
             placeholder="Bib #"
-            className="flex-1 h-16 text-center text-3xl font-bold border-3 border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none"
+            className="w-28 h-14 text-center text-2xl font-bold border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none"
             disabled={!isRunning}
           />
           <button
             onClick={handleLog}
             disabled={!isRunning || !bibInput}
-            className="h-16 px-8 bg-green-600 text-white text-2xl font-bold rounded-xl disabled:bg-gray-300 disabled:text-gray-500 shadow-lg active:scale-95 transition-transform"
+            className="flex-1 h-14 bg-green-600 text-white text-2xl font-bold rounded-xl disabled:bg-gray-300 disabled:text-gray-500 shadow-lg active:scale-95 transition-transform"
           >
             LOG
           </button>
         </div>
-        {previewLaps !== null && previewLaps > 0 && (
-          <div
-            className={`text-center mt-2 font-bold text-sm ${
-              previewLaps >= totalLaps ? "text-red-600" : "text-blue-600"
-            }`}
-          >
-            Bib #{previewBib}: {previewLaps}/{totalLaps} laps
-            {previewLaps >= totalLaps && " — ALREADY FINISHED"}
-          </div>
-        )}
-        {!isRunning && (
-          <div className="text-center text-gray-500 mt-2 text-sm">
-            Waiting for race to start...
-          </div>
-        )}
-      </div>
-
-      {/* Entry List */}
-      <div className="flex-1 overflow-y-auto px-3 pb-3">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="font-bold text-gray-600 text-sm uppercase">
-            My Entries ({visibleEntries.length}) — {totalLaps} lap race
-          </h3>
-        </div>
-        <EntryList
-          entries={visibleEntries}
-          onEditBib={handleAssignBib}
-          onDelete={handleDelete}
-          onFlag={handleFlag}
-          totalLaps={totalLaps}
-          lapCounts={lapCounts}
-        />
       </div>
     </div>
   );
