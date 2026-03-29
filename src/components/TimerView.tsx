@@ -1,5 +1,5 @@
 "use client";
-import { useState, useCallback, useRef, useMemo, useEffect } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { useRaceClock } from "@/hooks/useRaceClock";
 import { useEntries } from "@/hooks/useEntries";
 import RaceClock from "./RaceClock";
@@ -143,40 +143,18 @@ export default function TimerView({
   const previewBib = parseInt(bibInput);
   const previewLaps = !isNaN(previewBib) ? lapCounts[previewBib] || 0 : null;
 
-  // Track keyboard visibility to keep layout stable
-  const [bottomOffset, setBottomOffset] = useState(0);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.visualViewport) return;
-
-    const vv = window.visualViewport;
-    const onResize = () => {
-      // When keyboard opens, visualViewport.height shrinks.
-      // We position the input bar at the bottom of the visible viewport.
-      const offset = window.innerHeight - vv.height;
-      setBottomOffset(offset);
-    };
-
-    vv.addEventListener("resize", onResize);
-    vv.addEventListener("scroll", onResize);
-    return () => {
-      vv.removeEventListener("resize", onResize);
-      vv.removeEventListener("scroll", onResize);
-    };
-  }, []);
-
   return (
     <div
-      className={`h-[100vh] flex flex-col overflow-hidden transition-colors ${logFlash ? "bg-green-100" : "bg-gray-50"}`}
+      className={`h-dvh flex flex-col transition-colors ${logFlash ? "bg-green-100" : "bg-gray-50"}`}
     >
       {!isOnline && (
-        <div className="bg-yellow-500 text-yellow-900 text-center py-2 font-bold text-sm">
+        <div className="bg-yellow-500 text-yellow-900 text-center py-2 font-bold text-sm shrink-0">
           OFFLINE — entries will sync when connected
         </div>
       )}
 
       {warning && (
-        <div className="bg-amber-100 border-b border-amber-300 text-amber-900 text-center py-2 px-4 font-bold text-sm flex items-center justify-center gap-3">
+        <div className="bg-amber-100 border-b border-amber-300 text-amber-900 text-center py-2 px-4 font-bold text-sm flex items-center justify-center gap-3 shrink-0">
           <span>{warning}</span>
           {recentlyDeleted && (
             <button
@@ -189,10 +167,12 @@ export default function TimerView({
         </div>
       )}
 
-      <RaceClock elapsed={elapsed} isRunning={isRunning} />
+      <div className="shrink-0">
+        <RaceClock elapsed={elapsed} isRunning={isRunning} />
+      </div>
 
-      {/* Entry List — scrollable middle */}
-      <div className="flex-1 overflow-y-auto px-3 py-2 pb-20">
+      {/* Entry List — scrollable middle, takes remaining space */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
         <div className="flex items-center justify-between mb-2">
           <h3 className="font-bold text-gray-600 text-sm uppercase">
             {visibleEntries.length} entries — {totalLaps} lap race
@@ -208,11 +188,8 @@ export default function TimerView({
         />
       </div>
 
-      {/* Bib Entry — fixed to bottom, tracks keyboard position */}
-      <div
-        className="fixed left-0 right-0 border-t bg-white px-3 py-2 shadow-[0_-2px_8px_rgba(0,0,0,0.1)] z-50"
-        style={{ bottom: bottomOffset }}
-      >
+      {/* Bib Entry — stays at bottom, flex shrink-0 */}
+      <div className="shrink-0 border-t bg-white px-3 py-2">
         {previewLaps !== null && previewLaps > 0 && (
           <div
             className={`text-center mb-1 font-bold text-xs ${
